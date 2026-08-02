@@ -285,7 +285,7 @@ export default function Students() {
                 <div style={{display: 'flex', gap: '1.5rem'}}>
                   {studentDetails.photo ? (
                     <img 
-                      src={`http://${window.location.hostname}:8000${studentDetails.photo}`} 
+                      src={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${studentDetails.photo}`} 
                       alt={studentDetails.name} 
                       style={{width: '120px', height: '120px', objectFit: 'cover', borderRadius: '8px'}} 
                     />

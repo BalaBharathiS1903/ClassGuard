@@ -19,12 +19,13 @@ class AlertSerializer(serializers.ModelSerializer):
     student_grade = serializers.CharField(source='student.grade', read_only=True, default=None)
     student_section = serializers.CharField(source='student.section', read_only=True, default=None)
     student_roll_number = serializers.CharField(source='student.roll_number', read_only=True, default=None)
+    camera_name = serializers.CharField(source='camera.name', read_only=True, default=None)
 
     class Meta:
         model = Alert
         fields = [
             'id', 'alert_type', 'severity', 'description',
-            'student', 'camera', 'snapshot',
+            'student', 'camera', 'camera_name', 'snapshot',
             'is_resolved', 'resolved_by', 'resolved_at', 'created_at',
             # Nested student fields (read-only)
             'student_id', 'student_name', 'student_photo',

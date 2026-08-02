@@ -107,11 +107,12 @@ const Toast = ({ id, message, type = 'info', duration = 60000, playBeep = false,
     }, 400);
   }, [id, onClose]);
 
+  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
   const snapshotUrl = snapshot 
-    ? (snapshot.startsWith('http') ? snapshot : `http://${window.location.hostname}:8000${snapshot}`) 
+    ? (snapshot.startsWith('http') ? snapshot : `${API_BASE}${snapshot}`) 
     : null;
   const photoUrl = studentData?.student_photo
-    ? (studentData.student_photo.startsWith('http') ? studentData.student_photo : `http://${window.location.hostname}:8000${studentData.student_photo}`)
+    ? (studentData.student_photo.startsWith('http') ? studentData.student_photo : `${API_BASE}${studentData.student_photo}`)
     : null;
 
   const hasStudentCard = studentData && studentData.student_name;

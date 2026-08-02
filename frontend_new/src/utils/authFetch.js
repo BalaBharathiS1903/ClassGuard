@@ -4,7 +4,7 @@
  * from localStorage. If a 401 is received, attempts a token refresh.
  * If refresh also fails, redirects to login.
  */
-const API_BASE = import.meta.env.VITE_API_URL || 'https://classguard-9om7.onrender.com';
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 function getAuthHeaders() {
   const token = localStorage.getItem('access');

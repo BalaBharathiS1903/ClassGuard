@@ -9,7 +9,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const API_BASE = import.meta.env.VITE_API_URL || 'https://classguard-9om7.onrender.com';
+  const API_BASE = import.meta.env.VITE_API_URL || '';
 
   const handleLogin = async (e) => {
     e.preventDefault();

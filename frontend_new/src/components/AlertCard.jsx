@@ -11,8 +11,9 @@ const formatType = (type) => {
 
 export default function AlertCard({ type, time, severity, snapshot, studentName, studentId, description, onStudentClick, onCardClick, fullAlert }) {
   // Backend DRF often returns absolute URLs (starting with http), so we only prefix if it's a relative path
+  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
   const snapshotUrl = snapshot 
-    ? (snapshot.startsWith('http') ? snapshot : `http://${window.location.hostname}:8000${snapshot}`) 
+    ? (snapshot.startsWith('http') ? snapshot : `${API_BASE}${snapshot}`) 
     : null;
 
   return (
