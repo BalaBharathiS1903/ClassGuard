@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: classguard-backend
+    runtime: python
+    region: oregon
+    buildCommand: |
+      cd backend && pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate
+    startCommand: cd backend && daphne -b 0.0.0.0 -p $PORT core.asgi:application
+    envVars:
+      - key: DATABASE_URL
+        value: "postgresql://neondb_owner:npg_45VWlIBkYFpf@ep-young-bonus-aymjxo3c.c-5.us-east-2.aws.neon.tech/neondb?sslmode=require"
+      - key: REDIS_URL
+        value: "rediss://default:gQAAAAAAAoGXAAIgcDJmNGQ1ZDViZWM4ODc0NTI2YTEwZDhjNmEyMWY2ZWMxMg@relaxing-roughy-164247.upstash.io:6379"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: ALLOWED_HOSTS
+        value: "classguard-backend-4php.onrender.com,localhost"
+      - key: CORS_ORIGINS
+        value: "https://classguard-hq531y8ja-balabharathis1903s-projects.vercel.app,http://localhost:5173"
+      - key: DJANGO_SETTINGS_MODULE
+        value: core.settings
+      - key: PYTHON_VERSION
+        value: "3.11.0"

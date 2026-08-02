@@ -4,6 +4,7 @@
  * from localStorage. If a 401 is received, attempts a token refresh.
  * If refresh also fails, redirects to login.
  */
+const API_BASE = import.meta.env.VITE_API_URL || 'https://classguard-backend-4php.onrender.com';
 
 function getAuthHeaders() {
   const token = localStorage.getItem('access');
@@ -16,7 +17,7 @@ async function refreshAccessToken() {
   if (!refresh) return false;
 
   try {
-    const res = await fetch('/api/v1/auth/refresh/', {
+    const res = await fetch(`${API_BASE}/api/v1/auth/refresh/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh }),
@@ -46,7 +47,8 @@ export async function authFetch(url, options = {}) {
     headers['Content-Type'] = 'application/json';
   }
 
-  let res = await fetch(url, { ...options, headers });
+  const fullUrl = url.startsWith('http') ? url : `${API_BASE}${url}`;
+  let res = await fetch(fullUrl, { ...options, headers });
 
   // If 401, try refreshing the token once
   if (res.status === 401) {
@@ -59,7 +61,7 @@ export async function authFetch(url, options = {}) {
       if (options.body && !(options.body instanceof FormData) && !retryHeaders['Content-Type']) {
         retryHeaders['Content-Type'] = 'application/json';
       }
-      res = await fetch(url, { ...options, headers: retryHeaders });
+      res = await fetch(fullUrl, { ...options, headers: retryHeaders });
     }
 
     // If still 401, redirect to login

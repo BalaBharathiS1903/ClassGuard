@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
+const API_BASE = import.meta.env.VITE_API_URL || 'https://classguard-backend-4php.onrender.com';
+
 export default function WebcamFeed({ deviceId, label, autoStart = false, style = {} }) {
   const [isActive, setIsActive] = useState(false);
   const [error, setError] = useState('');
@@ -88,7 +90,7 @@ export default function WebcamFeed({ deviceId, label, autoStart = false, style =
       {isActive && (
         <img
           key={imgKey}
-          src={`/api/v1/video_feed/${deviceId || 1}/?token=${localStorage.getItem('access') || ''}`}
+          src={`${API_BASE}/api/v1/video_feed/${deviceId || 1}/?token=${localStorage.getItem('access') || ''}`}
           alt="Video Feed"
           style={{
             width: '100%',
