@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'https://classguard-backend-4php.onrender.com';
+const API_BASE = import.meta.env.VITE_API_URL || 'https://classguard-9om7.onrender.com';
 
 export default function WebcamFeed({ deviceId, label, autoStart = false, style = {} }) {
   const [isActive, setIsActive] = useState(false);

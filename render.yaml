@@ -16,7 +16,7 @@ services:
       - key: DEBUG
         value: "False"
       - key: ALLOWED_HOSTS
-        value: "classguard-backend-4php.onrender.com,localhost"
+        value: "classguard-9om7.onrender.com,localhost"
       - key: CORS_ORIGINS
         value: "https://classguard-hq531y8ja-balabharathis1903s-projects.vercel.app,http://localhost:5173"
       - key: DJANGO_SETTINGS_MODULE

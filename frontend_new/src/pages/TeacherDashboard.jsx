@@ -182,7 +182,7 @@ export default function TeacherDashboard() {
             <div style={{display: 'flex', gap: '1.5rem'}}>
               {studentDetails.photo ? (
                 <img 
-                  src={`${import.meta.env.VITE_API_URL || 'https://classguard-backend-4php.onrender.com'}${studentDetails.photo}`} 
+                  src={`${import.meta.env.VITE_API_URL || 'https://classguard-9om7.onrender.com'}${studentDetails.photo}`} 
                   alt={studentDetails.name} 
                   style={{width: '120px', height: '120px', objectFit: 'cover', borderRadius: '8px'}} 
                 />

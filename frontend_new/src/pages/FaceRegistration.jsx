@@ -207,7 +207,7 @@ export default function FaceRegistration() {
               {isCameraActive ? (
                 <img
                   ref={imgRef}
-                  src={`${import.meta.env.VITE_API_URL || 'https://classguard-backend-4php.onrender.com'}/api/v1/video_feed/${selectedCameraId}/?token=${localStorage.getItem('access') || ''}`}
+                  src={`${import.meta.env.VITE_API_URL || 'https://classguard-9om7.onrender.com'}/api/v1/video_feed/${selectedCameraId}/?token=${localStorage.getItem('access') || ''}`}
                   alt="Camera Feed"
                   style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                   onError={() => {

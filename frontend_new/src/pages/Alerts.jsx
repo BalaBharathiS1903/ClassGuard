@@ -183,7 +183,7 @@ export default function Alerts() {
             <div style={{display: 'flex', gap: '1.5rem'}}>
               {studentDetails.photo ? (
                 <img 
-                  src={`${import.meta.env.VITE_API_URL || 'https://classguard-backend-4php.onrender.com'}${studentDetails.photo}`} 
+                  src={`${import.meta.env.VITE_API_URL || 'https://classguard-9om7.onrender.com'}${studentDetails.photo}`} 
                   alt={studentDetails.name} 
                   style={{width: '120px', height: '120px', objectFit: 'cover', borderRadius: '8px'}} 
                 />
@@ -226,7 +226,7 @@ export default function Alerts() {
               {selectedAlert.snapshot && (
                 <div style={{width: '100%', textAlign: 'center', backgroundColor: '#f0f0f0', borderRadius: '8px', padding: '1rem'}}>
                   <img 
-                    src={selectedAlert.snapshot.startsWith('http') ? selectedAlert.snapshot : `${import.meta.env.VITE_API_URL || 'https://classguard-backend-4php.onrender.com'}${selectedAlert.snapshot}`} 
+                    src={selectedAlert.snapshot.startsWith('http') ? selectedAlert.snapshot : `${import.meta.env.VITE_API_URL || 'https://classguard-9om7.onrender.com'}${selectedAlert.snapshot}`} 
                     alt="Alert Snapshot" 
                     style={{maxWidth: '100%', maxHeight: '300px', objectFit: 'contain', borderRadius: '4px'}} 
                   />
@@ -235,7 +235,7 @@ export default function Alerts() {
               {selectedAlert.student_photo && (
                 <div style={{display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.5rem'}}>
                   <img 
-                    src={selectedAlert.student_photo.startsWith('http') ? selectedAlert.student_photo : `${import.meta.env.VITE_API_URL || 'https://classguard-backend-4php.onrender.com'}${selectedAlert.student_photo}`} 
+                    src={selectedAlert.student_photo.startsWith('http') ? selectedAlert.student_photo : `${import.meta.env.VITE_API_URL || 'https://classguard-9om7.onrender.com'}${selectedAlert.student_photo}`} 
                     alt="Registered Face" 
                     style={{width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px', border: '2px solid #ddd'}} 
                   />
