@@ -1,0 +1,249 @@
+/* Full-screen overlay backdrop */
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.25s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Centered toast card */
+.toast {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  min-width: 400px;
+  max-width: 500px;
+  width: 90vw;
+  overflow: hidden;
+  animation: scaleIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: center;
+}
+
+.toast.exiting {
+  animation: scaleOut 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes scaleOut {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+}
+
+/* Close button */
+.closeBtn {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  background: rgba(0, 0, 0, 0.08);
+  border: none;
+  cursor: pointer;
+  font-size: 1.4rem;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #555;
+  transition: all 0.2s ease;
+  z-index: 2;
+}
+
+.closeBtn:hover {
+  background: rgba(0, 0, 0, 0.15);
+  color: #111;
+}
+
+/* Header */
+.toastHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.25rem 3rem 1rem 1.25rem;
+}
+
+.icon {
+  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.message {
+  flex: 1;
+  font-weight: 600;
+  font-size: 1rem;
+  margin: 0;
+  line-height: 1.4;
+  color: #1f2937;
+}
+
+/* Student Details Card */
+.studentCard {
+  padding: 0 1.25rem 1.25rem;
+}
+
+.studentCardInner {
+  display: flex;
+  gap: 1.25rem;
+  padding: 1rem;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.studentPhotoArea {
+  flex-shrink: 0;
+}
+
+.studentPhoto {
+  width: 100px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 2px solid #e2e8f0;
+}
+
+.studentPhotoPlaceholder {
+  width: 100px;
+  height: 100px;
+  border-radius: 10px;
+  background: #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+}
+
+.studentDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.studentName {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 0.25rem 0;
+}
+
+.detailRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.detailLabel {
+  color: #64748b;
+  font-weight: 500;
+  min-width: 55px;
+}
+
+.detailValue {
+  color: #334155;
+  font-weight: 600;
+}
+
+.alertBadge {
+  text-transform: capitalize;
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+/* Snapshot only (no student) */
+.snapshotOnly {
+  padding: 0 1.25rem 1.25rem;
+}
+
+.snapshotImg {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #f1f5f9;
+}
+
+/* Progress bar for auto-dismiss countdown */
+.progressBar {
+  height: 4px;
+  background: #e5e7eb;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  width: 100%;
+  transform-origin: left;
+  animation: shrink linear forwards;
+}
+
+@keyframes shrink {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* ===== Type Color Variants ===== */
+
+/* Success */
+.success .toastHeader { background: #f0fdf4; }
+.success .message { color: #065f46; }
+.success .progressFill { background: #10b981; }
+
+/* Error */
+.error .toastHeader { background: #fef2f2; }
+.error .message { color: #991b1b; }
+.error .progressFill { background: #ef4444; }
+
+/* Warning */
+.warning .toastHeader { background: #fffbeb; }
+.warning .message { color: #92400e; }
+.warning .progressFill { background: #f59e0b; }
+
+/* Info */
+.info .toastHeader { background: #eff6ff; }
+.info .message { color: #1e3a8a; }
+.info .progressFill { background: #3b82f6; }

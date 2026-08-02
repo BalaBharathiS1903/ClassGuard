@@ -1,0 +1,85 @@
+.card {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  background-color: #f8f9fa;
+  border: 1px solid #eee;
+  animation: slideIn 0.3s ease-out forwards;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 0.35rem;
+  flex-shrink: 0;
+}
+
+.dot.critical,
+.dot.high {
+  background-color: #dc3545;
+}
+
+.dot.medium {
+  background-color: #fd7e14;
+}
+
+.dot.low {
+  background-color: #28a745;
+}
+
+.thumbnail {
+  width: 48px;
+  height: 48px;
+  border-radius: 0.25rem;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.type {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--clr-dark, #333);
+}
+
+.time {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.studentName {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #495057;
+}
+
+.description {
+  font-size: 0.85rem;
+  color: #6c757d;
+}

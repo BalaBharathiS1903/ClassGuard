@@ -1,0 +1,7 @@
+# Infrastructure files
+*.pem
+*.key
+*.crt
+ssl/
+!ssl/README.md
+.env
