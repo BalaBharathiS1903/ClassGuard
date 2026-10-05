@@ -744,7 +744,16 @@ def video_feed(request, camera_id):
     camera = get_object_or_404(Camera, id=camera_id)
     response = StreamingHttpResponse(gen_frames(camera),
                                 content_type='multipart/x-mixed-replace; boundary=frame')
-    # --- Security: Removed wildcard Access-Control-Allow-Origin ---
     response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response['X-Accel-Buffering'] = 'no'
+
+    # Enable CORS so HTML5 canvas can capture frames without cross-origin SecurityError
+    origin = request.META.get('HTTP_ORIGIN')
+    cors_allowed = getattr(settings, 'CORS_ALLOWED_ORIGINS', [])
+    if origin and (origin in cors_allowed or any(origin.startswith(a) for a in cors_allowed)):
+        response['Access-Control-Allow-Origin'] = origin
+        response['Access-Control-Allow-Credentials'] = 'true'
+    else:
+        response['Access-Control-Allow-Origin'] = '*'
+
     return response

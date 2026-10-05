@@ -1,16 +1,54 @@
-# React + Vite
+# ClassGuard Frontend (`frontend_new`)
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+The modern React dashboard interface for the ClassGuard AI-powered school security monitoring platform.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Teacher Dashboard**: Live camera feeds, system health telemetry, recent alerts, and student profile inspection modals.
+- **Multi-Camera Management**: Live viewing with webcam autodetection (`/api/v1/scan-webcams/`).
+- **Face Registration**: Instant face detection during student enrollment with browser FaceDetector API & OpenCV server fallback.
+- **Alert Dispatch & Routing**: Audio-visual notifications, alert escalation, and smart routing to active teachers via Twilio.
+- **Staff & Student Management**: Profile browsing, real-time search, and CSV bulk import.
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Framework**: React 19 + Vite
+- **Routing**: React Router 7 (`react-router-dom`)
+- **Icons**: Lucide React
+- **Styling**: Pure CSS Modules & CSS Variables
 
-## Expanding the Oxlint configuration
+## Getting Started
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+### Installation
+
+```bash
+npm install
+```
+
+### Development Server
+
+```bash
+npm run dev
+```
+
+By default, the Vite dev server runs at `http://localhost:5173` and proxies API requests (`/api` and `/ws`) to `http://localhost:8000`.
+
+### Production Build
+
+```bash
+npm run build
+```
+
+The output files are generated in `dist/`.
+
+### Testing
+
+```bash
+npm run test
+```
+
+## Docker Container
+
+The frontend Dockerfile uses a multi-stage build:
+1. `node:20-alpine` builds the Vite production bundle.
+2. `nginxinc/nginx-unprivileged:alpine` serves the static bundle on port `8080` with SPA routing and cache headers.
