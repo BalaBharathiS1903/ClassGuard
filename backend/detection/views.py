@@ -35,6 +35,55 @@ except Exception as e:
 # --- Alert throttling ---
 last_alert_time = {}
 
+# --- Face Detection Cascade ---
+_face_cascade = None
+_face_cascade_loaded = False
+
+
+def get_face_cascade():
+    """Lazily load and cache Haar face cascade classifier with robust fallback error handling."""
+    global _face_cascade, _face_cascade_loaded
+    if _face_cascade_loaded:
+        return _face_cascade
+
+    _face_cascade_loaded = True
+    try:
+        cascade_cls = getattr(cv2, 'CascadeClassifier', None)
+        if cascade_cls is None and hasattr(cv2, 'objdetect'):
+            cascade_cls = getattr(cv2.objdetect, 'CascadeClassifier', None)
+
+        if cascade_cls is not None:
+            xml_path = None
+            if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
+                p = os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml')
+                if os.path.exists(p):
+                    xml_path = p
+
+            if not xml_path:
+                cv2_file = getattr(cv2, '__file__', None)
+                if cv2_file:
+                    candidate = os.path.join(os.path.dirname(cv2_file), 'data', 'haarcascade_frontalface_default.xml')
+                    if os.path.exists(candidate):
+                        xml_path = candidate
+
+            if xml_path:
+                cascade = cascade_cls(xml_path)
+                if not cascade.empty():
+                    _face_cascade = cascade
+                    logger.info(f"Loaded Haar face cascade from {xml_path}")
+                else:
+                    logger.warning(f"Haar cascade at {xml_path} could not be loaded (empty).")
+            else:
+                logger.warning("haarcascade_frontalface_default.xml could not be located.")
+        else:
+            logger.warning("cv2 does not have CascadeClassifier available in this environment.")
+    except Exception as e:
+        logger.warning(f"Error initializing Haar face cascade: {e}")
+        _face_cascade = None
+
+    return _face_cascade
+
+
 # --- Face recognition data (loaded lazily) ---
 known_faces = {}  # {student_id: {'name': str, 'encoding': np.array}}
 known_faces_loaded_at = 0
@@ -501,10 +550,14 @@ def gen_frames(camera):
                     logger.error(f"Failed to create motion alert: {e}")
 
             # === FACE DETECTION & RECOGNITION ===
-            if 'face_cascade' not in locals():
-                face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-            
-            faces = face_cascade.detectMultiScale(gray, 1.3, 5, minSize=(30, 30))
+            face_cascade = get_face_cascade()
+            faces = []
+            if face_cascade is not None:
+                try:
+                    faces = face_cascade.detectMultiScale(gray, 1.3, 5, minSize=(30, 30))
+                except Exception as e:
+                    logger.warning(f"Face cascade detection failed: {e}")
+                    faces = []
             
             for (x, y, w, h) in faces:
                 face_roi = gray[y:y+h, x:x+w]
@@ -698,10 +751,14 @@ def detect_face_api(request):
             return Response({'error': 'Invalid image'}, status=status.HTTP_400_BAD_REQUEST)
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        face_cascade = cv2.CascadeClassifier(
-            cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-        )
-        faces = face_cascade.detectMultiScale(gray, 1.3, 5, minSize=(30, 30))
+        face_cascade = get_face_cascade()
+        faces = []
+        if face_cascade is not None:
+            try:
+                faces = face_cascade.detectMultiScale(gray, 1.3, 5, minSize=(30, 30))
+            except Exception as e:
+                logger.warning(f"Face detection API cascade error: {e}")
+                faces = []
 
         face_list = []
         for (x, y, w, h) in faces:
