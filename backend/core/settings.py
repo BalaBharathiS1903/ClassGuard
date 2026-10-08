@@ -16,8 +16,8 @@ if not SECRET_KEY:
         "Generate one with: python -c \"from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())\""
     )
 
-# --- Security: DEBUG defaults to False ---
-DEBUG = os.environ.get('DEBUG', 'False').lower() in ('true', '1', 'yes')
+# --- DEBUG defaults to True for local development, overridden to False in Docker/Production ---
+DEBUG = os.environ.get('DEBUG', 'True').lower() in ('true', '1', 'yes')
 
 # --- Security: Explicit ALLOWED_HOSTS (no wildcards) ---
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
@@ -118,14 +118,16 @@ USE_I18N = True
 USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATIC_ROOT.mkdir(parents=True, exist_ok=True)
 WHITENOISE_USE_FINDERS = True
+WHITENOISE_MANIFEST_STRICT = False
 
 STORAGES = {
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     },
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage" if not DEBUG else "django.contrib.staticfiles.storage.StaticFilesStorage",
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
     },
 }
 
