@@ -41,7 +41,7 @@ export default function Login() {
     <div className={styles.container} style={{ backgroundImage: `url(${bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
       <div className={styles.card}>
         <img src={logoImage} alt="ClassGuard Logo" className={styles.icon} style={{ width: '200px', height: 'auto' }} />
-        <h1 className={styles.title} style={{ fontFamily: "'Bodoni Moda', serif", fontSize: '1.4rem', marginBottom: '0.5rem', textAlign: 'center' }}>St. James Matriculation Higher Secondary School</h1>
+        <h1 className={styles.title} style={{ fontFamily: "'Bodoni Moda', serif", fontSize: '1.4rem', marginBottom: '0.5rem', textAlign: 'center' }}>St. James Academy</h1>
         <h2 style={{ fontSize: '1.1rem', color: '#9ca3af', marginBottom: '2rem', fontWeight: 'normal', textAlign: 'center' }}>ClassGuard Secure Access System</h2>
         <form className={styles.form} onSubmit={handleLogin}>
           <input name="username" type="text" placeholder="Username" required className={styles.input} autoComplete="username" />

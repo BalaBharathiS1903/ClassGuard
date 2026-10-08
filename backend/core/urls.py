@@ -4,9 +4,9 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 # ClassGuard admin branding
-admin.site.site_header = 'ClassGuard Administration'
-admin.site.site_title = 'ClassGuard Admin'
-admin.site.index_title = 'Security Monitoring Dashboard'
+admin.site.site_header = 'St. James Academy - ClassGuard Administration'
+admin.site.site_title = 'St. James Academy Admin'
+admin.site.index_title = 'St. James Academy Security Dashboard'
 
 urlpatterns = [
     path('admin/', admin.site.urls),

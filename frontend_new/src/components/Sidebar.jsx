@@ -20,7 +20,7 @@ export default function Sidebar() {
         <img src={logoImage} alt="ClassGuard Logo" style={{ width: '80px', height: 'auto' }} />
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <span>ClassGuard</span>
-          <span style={{ fontFamily: "'Bodoni Moda', serif", fontSize: '0.65rem', color: '#9ca3af', marginTop: '2px', lineHeight: '1.2' }}>St. James Matriculation<br/>Higher Secondary School</span>
+          <span style={{ fontFamily: "'Bodoni Moda', serif", fontSize: '0.75rem', color: '#9ca3af', marginTop: '2px', lineHeight: '1.2' }}>St. James Academy</span>
         </div>
       </div>
       <nav className={styles.nav}>
