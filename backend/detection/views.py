@@ -1,4 +1,6 @@
-from rest_framework import viewsets
+from rest_framework import viewsets, status
+from rest_framework.decorators import action, api_view, permission_classes as perm_classes
+from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from .models import Camera, Alert, Notification
 from .serializers import CameraSerializer, AlertSerializer, NotificationSerializer
@@ -35,139 +37,130 @@ except Exception as e:
 # --- Alert throttling ---
 last_alert_time = {}
 
-# --- Face Detection Cascade ---
-_face_cascade = None
-_face_cascade_loaded = False
-
+# --- Face Detection & Recognition Utilities ---
+from school.face_utils import (
+    get_face_cascades,
+    detect_faces_robust,
+    extract_face_features,
+    compute_face_encoding,
+    compare_face_features,
+    assess_face_quality,
+)
 
 def get_face_cascade():
-    """Lazily load and cache Haar face cascade classifier with robust fallback error handling."""
-    global _face_cascade, _face_cascade_loaded
-    if _face_cascade_loaded:
-        return _face_cascade
-
-    _face_cascade_loaded = True
-    try:
-        cascade_cls = getattr(cv2, 'CascadeClassifier', None)
-        if cascade_cls is None and hasattr(cv2, 'objdetect'):
-            cascade_cls = getattr(cv2.objdetect, 'CascadeClassifier', None)
-
-        if cascade_cls is not None:
-            xml_path = None
-            if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
-                p = os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml')
-                if os.path.exists(p):
-                    xml_path = p
-
-            if not xml_path:
-                cv2_file = getattr(cv2, '__file__', None)
-                if cv2_file:
-                    candidate = os.path.join(os.path.dirname(cv2_file), 'data', 'haarcascade_frontalface_default.xml')
-                    if os.path.exists(candidate):
-                        xml_path = candidate
-
-            if xml_path:
-                cascade = cascade_cls(xml_path)
-                if not cascade.empty():
-                    _face_cascade = cascade
-                    logger.info(f"Loaded Haar face cascade from {xml_path}")
-                else:
-                    logger.warning(f"Haar cascade at {xml_path} could not be loaded (empty).")
-            else:
-                logger.warning("haarcascade_frontalface_default.xml could not be located.")
-        else:
-            logger.warning("cv2 does not have CascadeClassifier available in this environment.")
-    except Exception as e:
-        logger.warning(f"Error initializing Haar face cascade: {e}")
-        _face_cascade = None
-
-    return _face_cascade
+    """Backward compatibility wrapper returning primary cascade."""
+    cascades = get_face_cascades()
+    return cascades.get('alt2') or cascades.get('default')
 
 
-# --- Face recognition data (loaded lazily) ---
-known_faces = {}  # {student_id: {'name': str, 'encoding': np.array}}
+# --- Thread-safe face recognition data cache ---
+known_faces = {}  # {student_id: {'name': str, 'lbp_arr': np.array, 'raw_arr': np.array}}
 known_faces_loaded_at = 0
+_known_faces_lock = threading.Lock()
+
+
+def invalidate_known_faces():
+    """Thread-safe invalidation of loaded face encodings to force immediate reload."""
+    global known_faces_loaded_at
+    logger.info("Invalidating known_faces cache...")
+    known_faces_loaded_at = 0
+    load_known_faces()
 
 
 def load_known_faces():
-    """Load face encodings from database."""
+    """Load face encodings from database, supporting version 2 and legacy formats,
+    and automatically computing missing encodings for students with photos.
+    """
     global known_faces, known_faces_loaded_at
-    try:
-        students = Student.objects.filter(
-            face_encoding__isnull=False,
-            photo__isnull=False
-        ).exclude(face_encoding='')
-        
-        new_faces = {}
-        for student in students:
-            try:
-                encoding = json.loads(student.face_encoding)
-                face_array = np.array(encoding, dtype=np.uint8).reshape(100, 100)
-                new_faces[student.id] = {
-                    'name': student.name,
-                    'encoding': face_array,
-                }
-                logger.debug(f"Loaded face encoding for student: {student.name} (id={student.id})")
-            except (json.JSONDecodeError, ValueError) as e:
-                logger.warning(f"Invalid face encoding for student {student.name}: {e}")
-        
-        known_faces = new_faces
-        known_faces_loaded_at = time.time()
-        logger.info(f"Loaded {len(known_faces)} face encodings from database")
-    except Exception as e:
-        logger.error(f"Error loading known faces: {e}")
+    with _known_faces_lock:
+        try:
+            students = Student.objects.filter(photo__isnull=False).exclude(photo='')
+            new_faces = {}
+
+            for student in students:
+                try:
+                    encoding_data = None
+                    if student.face_encoding:
+                        try:
+                            encoding_data = json.loads(student.face_encoding)
+                        except Exception:
+                            encoding_data = None
+
+                    # If student has a photo on disk but no valid encoding, auto-compute now
+                    if encoding_data is None and student.photo:
+                        try:
+                            photo_path = student.photo.path
+                            if os.path.exists(photo_path):
+                                enc, _ = compute_face_encoding(photo_path)
+                                if enc:
+                                    student.face_encoding = json.dumps(enc)
+                                    Student.objects.filter(pk=student.pk).update(face_encoding=student.face_encoding)
+                                    encoding_data = enc
+                                    logger.info(f"Auto-computed face encoding for {student.name}")
+                        except Exception as e:
+                            logger.warning(f"Could not auto-compute face encoding for {student.name}: {e}")
+
+                    if encoding_data is None:
+                        continue
+
+                    # Parse into ready-to-compare numpy arrays
+                    if isinstance(encoding_data, dict) and 'lbp' in encoding_data:
+                        lbp_arr = np.array(encoding_data['lbp'], dtype=np.float32)
+                        raw_arr = None
+                        if 'raw' in encoding_data:
+                            raw_arr = np.array(encoding_data['raw'], dtype=np.uint8).reshape(100, 100)
+                        new_faces[student.id] = {
+                            'name': student.name,
+                            'lbp_arr': lbp_arr,
+                            'raw_arr': raw_arr,
+                        }
+                    elif isinstance(encoding_data, list) and len(encoding_data) == 10000:
+                        raw_arr = np.array(encoding_data, dtype=np.uint8).reshape(100, 100)
+                        features = extract_face_features(raw_arr)
+                        lbp_arr = np.array(features['lbp'], dtype=np.float32)
+                        new_faces[student.id] = {
+                            'name': student.name,
+                            'lbp_arr': lbp_arr,
+                            'raw_arr': raw_arr,
+                        }
+
+                    logger.debug(f"Loaded face encoding for student: {student.name} (id={student.id})")
+                except Exception as e:
+                    logger.warning(f"Invalid face encoding for student {student.name}: {e}")
+
+            known_faces.clear()
+            known_faces.update(new_faces)
+            known_faces_loaded_at = time.time()
+            logger.info(f"Loaded {len(known_faces)} face encodings from database")
+        except Exception as e:
+            logger.error(f"Error loading known faces: {e}")
 
 
 def match_face(face_gray):
     """Try to match a detected face against known student faces.
     Returns (student_id, student_name, confidence) or (None, None, 0).
-    Uses both histogram correlation and template matching for robust results.
     """
     if not known_faces:
-        logger.debug("match_face: No known faces loaded.")
         return None, None, 0
-    
-    face_resized = cv2.resize(face_gray, (100, 100))
-    # Normalize brightness/contrast for better matching
-    face_resized = cv2.equalizeHist(face_resized)
-    
+
     best_match_id = None
     best_match_name = None
-    best_score = -1  # Higher is better for correlation
-    
+    highest_score = -1.0
+    highest_conf = 0.0
+
     for student_id, data in known_faces.items():
-        known_face = data['encoding']
-        # Also equalize the known face for fair comparison
-        known_equalized = cv2.equalizeHist(known_face)
-        
-        # Method 1: Histogram correlation (lighting-invariant)
-        hist_input = cv2.calcHist([face_resized], [0], None, [256], [0, 256])
-        hist_known = cv2.calcHist([known_equalized], [0], None, [256], [0, 256])
-        cv2.normalize(hist_input, hist_input)
-        cv2.normalize(hist_known, hist_known)
-        hist_score = cv2.compareHist(hist_input, hist_known, cv2.HISTCMP_CORREL)
-        
-        # Method 2: Template matching (structural similarity)
-        result = cv2.matchTemplate(face_resized, known_equalized, cv2.TM_CCOEFF_NORMED)
-        template_score = float(result[0][0])
-        
-        # Combined score (weighted average)
-        combined_score = (hist_score * 0.4) + (template_score * 0.6)
-        
-        logger.debug(f"match_face: student={data['name']} hist={hist_score:.3f} template={template_score:.3f} combined={combined_score:.3f}")
-        
-        if combined_score > best_score:
-            best_score = combined_score
-            best_match_id = student_id
-            best_match_name = data['name']
-    
-    # Threshold for match (higher = more similar, max 1.0)
-    if best_score > 0.35:
-        confidence = min(100, max(0, best_score * 100))
-        logger.info(f"match_face: MATCHED {best_match_name} with score={best_score:.3f} confidence={confidence:.0f}%")
-        return best_match_id, best_match_name, confidence
-    
-    logger.debug(f"match_face: No match found. Best score was {best_score:.3f} for {best_match_name}")
+        is_match, conf, score = compare_face_features(face_gray, data)
+        if score > highest_score:
+            highest_score = score
+            highest_conf = conf
+            if is_match:
+                best_match_id = student_id
+                best_match_name = data['name']
+
+    if best_match_id is not None:
+        logger.info(f"match_face: MATCHED {best_match_name} score={highest_score:.3f} confidence={highest_conf:.0f}%")
+        return best_match_id, best_match_name, highest_conf
+
     return None, None, 0
 
 
@@ -192,6 +185,48 @@ class CameraViewSet(viewsets.ModelViewSet):
     queryset = Camera.objects.all()
     serializer_class = CameraSerializer
     permission_classes = [IsAuthenticated]
+
+    @action(detail=True, methods=['get'])
+    def snapshot(self, request, pk=None):
+        """Return the current frame from this camera as a single JPEG image.
+        Allows frontend to capture backend camera frames cleanly without CORS/tainted canvas issues.
+        """
+        from django.http import HttpResponse
+        camera = self.get_object()
+        reader = CameraReader.get_instance(camera.rtsp_url)
+        frame = None
+        for _ in range(12):
+            if reader.frame is not None:
+                frame = reader.frame.copy()
+                break
+            time.sleep(0.1)
+
+        if frame is None:
+            # Fallback direct read attempt
+            url = int(camera.rtsp_url) if camera.rtsp_url.isdigit() else camera.rtsp_url
+            try:
+                cap = cv2.VideoCapture(url)
+                if cap.isOpened():
+                    for _ in range(3):
+                        cap.read()
+                    ret, f = cap.read()
+                    if ret and f is not None:
+                        frame = f
+                    cap.release()
+            except Exception:
+                pass
+
+        if frame is None:
+            return Response({'error': 'Camera frame unavailable. Ensure camera is online.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        if not ret:
+            return Response({'error': 'Failed to encode frame'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        response = HttpResponse(buffer.tobytes(), content_type='image/jpeg')
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response['Access-Control-Allow-Origin'] = '*'
+        return response
 
 
 from rest_framework.decorators import action, api_view, permission_classes as perm_classes
@@ -550,14 +585,7 @@ def gen_frames(camera):
                     logger.error(f"Failed to create motion alert: {e}")
 
             # === FACE DETECTION & RECOGNITION ===
-            face_cascade = get_face_cascade()
-            faces = []
-            if face_cascade is not None:
-                try:
-                    faces = face_cascade.detectMultiScale(gray, 1.3, 5, minSize=(30, 30))
-                except Exception as e:
-                    logger.warning(f"Face cascade detection failed: {e}")
-                    faces = []
+            faces = detect_faces_robust(gray)
             
             for (x, y, w, h) in faces:
                 face_roi = gray[y:y+h, x:x+w]
@@ -735,7 +763,7 @@ def scan_local_webcams(request):
 @api_view(['POST'])
 def detect_face_api(request):
     """API endpoint to detect faces in an uploaded image.
-    Returns face count and bounding boxes.
+    Returns face count, bounding boxes, and image quality metrics.
     Used as a fallback when the browser's FaceDetector API is unavailable.
     """
     image_file = request.FILES.get('image')
@@ -743,22 +771,13 @@ def detect_face_api(request):
         return Response({'error': 'No image provided'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        # Read image bytes and decode with OpenCV
         file_bytes = np.frombuffer(image_file.read(), np.uint8)
         img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
         if img is None:
             return Response({'error': 'Invalid image'}, status=status.HTTP_400_BAD_REQUEST)
 
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        face_cascade = get_face_cascade()
-        faces = []
-        if face_cascade is not None:
-            try:
-                faces = face_cascade.detectMultiScale(gray, 1.3, 5, minSize=(30, 30))
-            except Exception as e:
-                logger.warning(f"Face detection API cascade error: {e}")
-                faces = []
+        faces = detect_faces_robust(img)
 
         face_list = []
         for (x, y, w, h) in faces:
@@ -769,9 +788,14 @@ def detect_face_api(request):
                 'height': int(h),
             })
 
+        quality = None
+        if faces:
+            quality = assess_face_quality(img, faces[0])
+
         return Response({
             'faceCount': len(face_list),
             'faces': face_list,
+            'quality': quality,
         })
     except Exception as e:
         logger.error(f"Face detection API error: {e}")

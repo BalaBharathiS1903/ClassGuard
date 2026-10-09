@@ -3,13 +3,15 @@ from .models import Student, Schedule, Staff
 
 
 class StudentSerializer(serializers.ModelSerializer):
+    has_face_encoding = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = Student
         fields = [
             'id', 'name', 'grade', 'section', 'roll_number',
-            'photo', 'photo_url', 'parent', 'rfid_tag', 'created_at',
+            'photo', 'photo_url', 'has_face_encoding', 'parent', 'rfid_tag', 'created_at',
         ]
-        read_only_fields = ['id', 'created_at', 'face_encoding']
+        read_only_fields = ['id', 'created_at', 'face_encoding', 'has_face_encoding']
         extra_kwargs = {
             'face_encoding': {'read_only': True},
         }

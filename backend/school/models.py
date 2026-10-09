@@ -16,6 +16,45 @@ class Student(models.Model):
     def __str__(self):
         return f"{self.name} ({self.grade}-{self.section})"
 
+    @property
+    def has_face_encoding(self):
+        return bool(self.face_encoding)
+
+    def save(self, *args, **kwargs):
+        compute_needed = False
+        if self.pk:
+            try:
+                old = Student.objects.filter(pk=self.pk).first()
+                if old:
+                    if self.photo and (not old.photo or old.photo != self.photo):
+                        compute_needed = True
+                    elif self.photo and not self.face_encoding:
+                        compute_needed = True
+            except Exception:
+                pass
+        else:
+            if self.photo and not self.face_encoding:
+                compute_needed = True
+
+        super().save(*args, **kwargs)
+
+        if compute_needed and self.photo:
+            try:
+                from .face_utils import compute_face_encoding
+                import json
+                encoding, _ = compute_face_encoding(self.photo.path)
+                if encoding:
+                    self.face_encoding = json.dumps(encoding)
+                    Student.objects.filter(pk=self.pk).update(face_encoding=self.face_encoding)
+                    try:
+                        from detection.views import invalidate_known_faces
+                        invalidate_known_faces()
+                    except Exception:
+                        pass
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Could not compute face encoding for student {self.name}: {e}")
+
 class Schedule(models.Model):
     grade = models.CharField(max_length=20)
     section = models.CharField(max_length=20)

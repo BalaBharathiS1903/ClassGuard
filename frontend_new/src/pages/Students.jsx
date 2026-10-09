@@ -187,6 +187,7 @@ export default function Students() {
                   <th style={{ padding: '1rem' }}>Name</th>
                   <th style={{ padding: '1rem' }}>Grade</th>
                   <th style={{ padding: '1rem' }}>Section</th>
+                  <th style={{ padding: '1rem' }}>Face Biometrics</th>
                 </tr>
               </thead>
               <tbody>
@@ -203,11 +204,18 @@ export default function Students() {
                     </td>
                     <td style={{ padding: '1rem' }}>{student.grade}</td>
                     <td style={{ padding: '1rem' }}>{student.section}</td>
+                    <td style={{ padding: '1rem' }}>
+                      {student.has_face_encoding ? (
+                        <span style={{ color: '#10b981', fontWeight: '600' }}>✅ Active</span>
+                      ) : (
+                        <span style={{ color: '#f59e0b', fontSize: '0.875rem' }}>⚠️ Not Registered</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {filteredStudents.length === 0 && (
                   <tr>
-                    <td colSpan="4" style={{ padding: '1rem', textAlign: 'center' }}>No students found matching your search.</td>
+                    <td colSpan="5" style={{ padding: '1rem', textAlign: 'center' }}>No students found matching your search.</td>
                   </tr>
                 )}
               </tbody>
@@ -300,6 +308,11 @@ export default function Students() {
                     <p><strong>Grade/Section:</strong> {studentDetails.grade}-{studentDetails.section}</p>
                     <p><strong>Registered on:</strong> {new Date(studentDetails.created_at).toLocaleDateString()}</p>
                     {studentDetails.rfid_tag && <p><strong>RFID:</strong> {studentDetails.rfid_tag}</p>}
+                    <p><strong>Face Biometrics:</strong> {studentDetails.has_face_encoding ? (
+                      <span style={{ color: '#10b981', fontWeight: 600 }}>✅ Active (Recognizable in Camera)</span>
+                    ) : (
+                      <span style={{ color: '#f59e0b' }}>⚠️ Not Registered (<a href="/registration" style={{ color: '#3b82f6', textDecoration: 'underline' }}>Register Face</a>)</span>
+                    )}</p>
                   </div>
                 </div>
                 <div style={{marginTop: '1.5rem', textAlign: 'right'}}>

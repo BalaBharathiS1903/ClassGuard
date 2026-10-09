@@ -18,43 +18,7 @@ MAX_CSV_FILE_SIZE = 1_000_000  # 1 MB
 MAX_CSV_ROWS = 500
 
 
-def compute_face_encoding(image_path):
-    """Compute a face encoding from an image file using OpenCV.
-    Returns a flattened, histogram-equalized 100x100 grayscale face as a list of ints.
-    """
-    try:
-        img = cv2.imread(str(image_path))
-        if img is None:
-            logger.warning(f"Could not read image: {image_path}")
-            return None
-
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-        # Detect face using Haar cascade
-        face_cascade = cv2.CascadeClassifier(
-            cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-        )
-        faces = face_cascade.detectMultiScale(gray, 1.3, 5, minSize=(30, 30))
-
-        if len(faces) == 0:
-            logger.warning(f"No face detected in: {image_path}")
-            return None
-
-        # Use the largest face
-        x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
-        face_roi = gray[y:y+h, x:x+w]
-
-        # Resize to standard size for consistent comparison
-        face_resized = cv2.resize(face_roi, (100, 100))
-
-        # Store as flattened array (for histogram/template comparison)
-        encoding = face_resized.flatten().tolist()
-        logger.info(f"Face encoding computed successfully for: {image_path} (face size: {w}x{h})")
-        return encoding
-
-    except Exception as e:
-        logger.error(f"Error computing face encoding: {e}")
-        return None
+from .face_utils import compute_face_encoding, assess_face_quality
 
 
 def _sanitize_csv_field(value):
@@ -79,24 +43,72 @@ class StudentViewSet(viewsets.ModelViewSet):
         instance = serializer.save()
         # If a photo was uploaded, compute face encoding
         if 'photo' in self.request.FILES and instance.photo:
-            from django.conf import settings
-            image_path = instance.photo.path
-            encoding = compute_face_encoding(image_path)
-            if encoding is not None:
-                instance.face_encoding = json.dumps(encoding)
-                instance.save(update_fields=['face_encoding'])
-                logger.info(f"Face encoding computed for student: {instance.name}")
-            else:
-                logger.warning(f"Could not compute face encoding for student: {instance.name}")
+            try:
+                encoding, _ = compute_face_encoding(instance.photo.path)
+                if encoding is not None:
+                    instance.face_encoding = json.dumps(encoding)
+                    instance.save(update_fields=['face_encoding'])
+                    logger.info(f"Face encoding computed for student: {instance.name}")
+                    try:
+                        from detection.views import invalidate_known_faces
+                        invalidate_known_faces()
+                    except Exception:
+                        pass
+                else:
+                    logger.warning(f"Could not compute face encoding for student: {instance.name}")
+            except Exception as e:
+                logger.error(f"Error encoding photo during update: {e}")
 
     def perform_create(self, serializer):
         instance = serializer.save()
         if instance.photo:
-            image_path = instance.photo.path
-            encoding = compute_face_encoding(image_path)
-            if encoding is not None:
-                instance.face_encoding = json.dumps(encoding)
-                instance.save(update_fields=['face_encoding'])
+            try:
+                encoding, _ = compute_face_encoding(instance.photo.path)
+                if encoding is not None:
+                    instance.face_encoding = json.dumps(encoding)
+                    instance.save(update_fields=['face_encoding'])
+                    logger.info(f"Face encoding computed for new student: {instance.name}")
+                    try:
+                        from detection.views import invalidate_known_faces
+                        invalidate_known_faces()
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.error(f"Error encoding photo during create: {e}")
+
+    @action(detail=True, methods=['post'])
+    def register_face(self, request, pk=None):
+        """Dedicated biometric face registration endpoint for a student."""
+        student = self.get_object()
+        photo_file = request.FILES.get('photo')
+        if not photo_file:
+            return Response({'error': 'No photo provided'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate that image contains a detectable face
+        encoding, bbox = compute_face_encoding(photo_file)
+        if encoding is None:
+            return Response({
+                'error': 'No clear face detected in the image. Please position your face clearly facing the camera.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Save photo to student
+        student.photo = photo_file
+        student.face_encoding = json.dumps(encoding)
+        student.save(update_fields=['photo', 'face_encoding'])
+
+        # Invalidate detection memory cache
+        try:
+            from detection.views import invalidate_known_faces
+            invalidate_known_faces()
+        except Exception:
+            pass
+
+        return Response({
+            'message': f'Face successfully registered and encoded for {student.name}',
+            'has_face_encoding': True,
+            'bbox': bbox,
+            'student': StudentSerializer(student).data
+        }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'])
     def bulk_upload(self, request):
