@@ -29,7 +29,9 @@ def get_face_cascades():
 
     candidates = {
         'alt2': 'haarcascade_frontalface_alt2.xml',
+        'alt': 'haarcascade_frontalface_alt.xml',
         'default': 'haarcascade_frontalface_default.xml',
+        'alt_tree': 'haarcascade_frontalface_alt_tree.xml',
         'profile': 'haarcascade_profileface.xml',
     }
 
@@ -49,7 +51,8 @@ def get_face_cascades():
 
 
 def detect_faces_robust(img_bgr_or_gray, max_faces=10):
-    """Robust face detection using multi-scale, multi-cascade passes with contrast enhancement.
+    """Robust face detection using multi-scale, multi-cascade passes with contrast enhancement
+    and tilt compensation. Handles low-light, angle-tilted, and low-res laptop webcams.
     Returns a list of (x, y, w, h) bounding boxes sorted by face area (largest first).
     """
     if img_bgr_or_gray is None:
@@ -65,20 +68,26 @@ def detect_faces_robust(img_bgr_or_gray, max_faces=10):
         logger.warning("No face cascades available for detection.")
         return []
 
-    # Downscale very large images (> 1200px) for speed and more reliable Haar scale steps
     orig_h, orig_w = gray.shape[:2]
-    scale_down = 1.0
+    scale_ratio = 1.0
     max_dim = max(orig_h, orig_w)
     work_gray = gray
+
+    # Downscale very large images (> 1200px) or upscale small webcams (< 480px)
     if max_dim > 1200:
-        scale_down = 1200.0 / max_dim
-        new_w = int(orig_w * scale_down)
-        new_h = int(orig_h * scale_down)
+        scale_ratio = 1200.0 / max_dim
+        new_w = int(orig_w * scale_ratio)
+        new_h = int(orig_h * scale_ratio)
         work_gray = cv2.resize(gray, (new_w, new_h))
+    elif 0 < max_dim < 480:
+        scale_ratio = 600.0 / max_dim
+        new_w = int(orig_w * scale_ratio)
+        new_h = int(orig_h * scale_ratio)
+        work_gray = cv2.resize(gray, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
 
     detected_boxes = []
 
-    def _run_cascade(clf, target_img, scale_factor=1.1, min_neighbors=3, min_size=(30, 30)):
+    def _run_cascade(clf, target_img, scale_factor=1.08, min_neighbors=3, min_size=(24, 24)):
         try:
             return clf.detectMultiScale(
                 target_img,
@@ -89,47 +98,95 @@ def detect_faces_robust(img_bgr_or_gray, max_faces=10):
         except Exception:
             return ()
 
-    # Pass 1: Primary accurate cascade (alt2)
     alt2_clf = cascades.get('alt2')
-    if alt2_clf:
-        faces = _run_cascade(alt2_clf, work_gray, scale_factor=1.1, min_neighbors=3)
-        if len(faces) > 0:
-            detected_boxes = list(faces)
+    alt_clf = cascades.get('alt')
+    default_clf = cascades.get('default')
+    alt_tree_clf = cascades.get('alt_tree')
+    profile_clf = cascades.get('profile')
 
-    # Pass 2: If no face found, apply CLAHE (contrast enhancement) to handle dim / backlight
-    if len(detected_boxes) == 0:
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        enhanced_gray = clahe.apply(work_gray)
-        if alt2_clf:
-            faces = _run_cascade(alt2_clf, enhanced_gray, scale_factor=1.1, min_neighbors=3)
+    # Pass 1: Primary accurate cascades on raw grayscale
+    for clf in (alt2_clf, alt_clf):
+        if clf and len(detected_boxes) == 0:
+            faces = _run_cascade(clf, work_gray, scale_factor=1.08, min_neighbors=3)
             if len(faces) > 0:
                 detected_boxes = list(faces)
 
-    # Pass 3: Fallback to default cascade
-    default_clf = cascades.get('default')
-    if len(detected_boxes) == 0 and default_clf:
-        faces = _run_cascade(default_clf, work_gray, scale_factor=1.1, min_neighbors=3)
+    # Pass 2: Contrast-enhanced with CLAHE (for dim rooms, backlighting, or uneven screen glare)
+    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+    clahe_gray = clahe.apply(work_gray)
+
+    if len(detected_boxes) == 0:
+        for clf in (alt2_clf, alt_clf):
+            if clf and len(detected_boxes) == 0:
+                faces = _run_cascade(clf, clahe_gray, scale_factor=1.08, min_neighbors=3)
+                if len(faces) > 0:
+                    detected_boxes = list(faces)
+
+    # Pass 3: Histogram Equalization (handles high contrast / backlights)
+    if len(detected_boxes) == 0:
+        eq_gray = cv2.equalizeHist(work_gray)
+        for clf in (alt2_clf, alt_clf, default_clf):
+            if clf and len(detected_boxes) == 0:
+                faces = _run_cascade(clf, eq_gray, scale_factor=1.08, min_neighbors=3)
+                if len(faces) > 0:
+                    detected_boxes = list(faces)
+
+    # Pass 4: Fallback to default & alt_tree cascades
+    if len(detected_boxes) == 0:
+        for clf in (default_clf, alt_tree_clf):
+            if clf and len(detected_boxes) == 0:
+                faces = _run_cascade(clf, work_gray, scale_factor=1.08, min_neighbors=3)
+                if len(faces) == 0:
+                    faces = _run_cascade(clf, clahe_gray, scale_factor=1.08, min_neighbors=3)
+                if len(faces) > 0:
+                    detected_boxes = list(faces)
+
+    # Pass 5: Fine-scale & relaxed neighbor threshold (for smaller or slightly noisy faces)
+    if len(detected_boxes) == 0:
+        for clf in (alt2_clf, alt_clf, default_clf):
+            if clf and len(detected_boxes) == 0:
+                faces = _run_cascade(clf, clahe_gray, scale_factor=1.05, min_neighbors=2, min_size=(20, 20))
+                if len(faces) > 0:
+                    detected_boxes = list(faces)
+
+    # Pass 6: Semi-profile cascade (for slight head turn)
+    if len(detected_boxes) == 0 and profile_clf:
+        faces = _run_cascade(profile_clf, work_gray, scale_factor=1.08, min_neighbors=3)
         if len(faces) == 0:
-            # Try with enhanced contrast
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-            enhanced_gray = clahe.apply(work_gray)
-            faces = _run_cascade(default_clf, enhanced_gray, scale_factor=1.1, min_neighbors=3)
+            faces = _run_cascade(profile_clf, clahe_gray, scale_factor=1.08, min_neighbors=3)
         if len(faces) > 0:
             detected_boxes = list(faces)
 
-    # Pass 4: Profile cascade for slight side-angles
-    profile_clf = cascades.get('profile')
-    if len(detected_boxes) == 0 and profile_clf:
-        faces = _run_cascade(profile_clf, work_gray, scale_factor=1.1, min_neighbors=3)
-        if len(faces) > 0:
-            detected_boxes = list(faces)
+    # Pass 7: Screen angle & head tilt compensation (common on laptop screens tilted backward)
+    if len(detected_boxes) == 0:
+        wh, ww = work_gray.shape[:2]
+        center = (ww // 2, wh // 2)
+        tilt_clf = alt2_clf or alt_clf or default_clf
+        if tilt_clf:
+            for angle in (-12, 12, -6, 6, -18, 18):
+                M = cv2.getRotationMatrix2D(center, angle, 1.0)
+                M_inv = cv2.getRotationMatrix2D(center, -angle, 1.0)
+                rot_img = cv2.warpAffine(
+                    clahe_gray, M, (ww, wh),
+                    flags=cv2.INTER_LINEAR,
+                    borderMode=cv2.BORDER_REPLICATE
+                )
+                faces = _run_cascade(tilt_clf, rot_img, scale_factor=1.08, min_neighbors=2, min_size=(20, 20))
+                if len(faces) > 0:
+                    for (rx, ry, rw, rh) in faces:
+                        bcx, bcy = rx + rw / 2.0, ry + rh / 2.0
+                        orig_pt = M_inv @ np.array([bcx, bcy, 1.0])
+                        ox = int(round(orig_pt[0] - rw / 2.0))
+                        oy = int(round(orig_pt[1] - rh / 2.0))
+                        detected_boxes.append((ox, oy, rw, rh))
+                    break
 
     if not detected_boxes:
         return []
 
-    # Map coordinates back if downscaled
+    # Map coordinates back if scaled
     final_faces = []
-    inv_scale = 1.0 / scale_down
+    inv_scale = 1.0 / scale_ratio
     for (x, y, w, h) in detected_boxes:
         rx = int(round(x * inv_scale))
         ry = int(round(y * inv_scale))

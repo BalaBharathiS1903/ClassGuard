@@ -788,9 +788,7 @@ def detect_face_api(request):
                 'height': int(h),
             })
 
-        quality = None
-        if faces:
-            quality = assess_face_quality(img, faces[0])
+        quality = assess_face_quality(img, faces[0]) if faces else assess_face_quality(img)
 
         return Response({
             'faceCount': len(face_list),

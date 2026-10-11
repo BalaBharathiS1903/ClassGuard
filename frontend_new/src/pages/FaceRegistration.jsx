@@ -33,6 +33,7 @@ export default function FaceRegistration() {
   const [previewUrl, setPreviewUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [detectedFacesCount, setDetectedFacesCount] = useState(null);
+  const [videoAspect, setVideoAspect] = useState(null);
 
   // Fetch student roster
   const fetchStudents = () => {
@@ -125,11 +126,25 @@ export default function FaceRegistration() {
         return;
       }
       try {
-        const constraints = {
-          video: selectedDeviceId ? { deviceId: { exact: selectedDeviceId } } : true,
+        let stream;
+        const idealConstraints = {
+          video: {
+            deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
+            width: { ideal: 1280, min: 640 },
+            height: { ideal: 720, min: 480 },
+            facingMode: 'user',
+          },
           audio: false,
         };
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(idealConstraints);
+        } catch {
+          // Fallback if camera driver rejects ideal width/height constraints
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: selectedDeviceId ? { deviceId: { exact: selectedDeviceId } } : true,
+            audio: false,
+          });
+        }
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -190,7 +205,11 @@ export default function FaceRegistration() {
       setDetectedFacesCount(result.faceCount);
 
       if (result.faceCount === 0) {
-        addToast('❌ No face detected in uploaded image! Please choose a clearer frontal photo.', 'error');
+        let msg = '❌ No face detected in uploaded image! Please choose a clearer frontal photo.';
+        if (result.quality?.is_too_dark) msg = '❌ Image is too dark. Please choose a well-lit photo.';
+        if (result.quality?.is_too_bright) msg = '❌ Image is overexposed. Please choose a photo without harsh glare.';
+        if (result.quality?.is_blurry) msg = '❌ Photo is blurry. Please choose a sharper frontal photo.';
+        addToast(msg, 'error');
         setIsProcessing(false);
         return;
       }
@@ -260,7 +279,15 @@ export default function FaceRegistration() {
         setDetectedFacesCount(result.faceCount);
 
         if (result.faceCount === 0) {
-          addToast('❌ No face detected! Please position your face clearly in the frame.', 'error');
+          let errorMsg = '❌ No face detected! Please position your face inside the guide oval and face the webcam.';
+          if (result.quality?.is_too_dark) {
+            errorMsg = '❌ Face not detected: Lighting is too dark. Please face a light source or turn on a light.';
+          } else if (result.quality?.is_too_bright) {
+            errorMsg = '❌ Face not detected: Image is overexposed. Please adjust lighting or reduce screen glare.';
+          } else if (result.quality?.is_blurry) {
+            errorMsg = '❌ Face not detected: Image is blurry. Please hold steady and try again.';
+          }
+          addToast(errorMsg, 'error');
           setIsProcessing(false);
           return;
         }
@@ -455,45 +482,100 @@ export default function FaceRegistration() {
 
             {/* Video / Stream Viewer Container (for local webcam or backend camera) */}
             {cameraSource !== 'file' ? (
-              <div
-                style={{
-                  aspectRatio: '16/9',
-                  background: '#1f2937',
-                  borderRadius: '12px',
-                  overflow: 'hidden',
-                  position: 'relative',
-                  marginBottom: '1.5rem',
-                  boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.3)',
-                }}
-              >
-                {/* Local Browser Video Element */}
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
+              <>
+                <div
                   style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                    display: isCameraActive && cameraSource === 'local' ? 'block' : 'none',
+                    aspectRatio: videoAspect ? `${videoAspect}` : '16/9',
+                    maxHeight: '420px',
+                    background: '#1f2937',
+                    borderRadius: '12px',
+                    overflow: 'hidden',
+                    position: 'relative',
+                    marginBottom: '1rem',
+                    boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.3)',
                   }}
-                />
-
-                {/* Backend MJPEG Stream Element */}
-                {isCameraActive && cameraSource === 'backend' && (
-                  <img
-                    ref={imgRef}
-                    crossOrigin="anonymous"
-                    src={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/video_feed/${selectedCameraId}/?token=${localStorage.getItem('access') || ''}`}
-                    alt="Camera Feed"
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                    onError={() => {
-                      addToast('Failed to connect to backend camera feed.', 'error');
-                      setIsCameraActive(false);
+                >
+                  {/* Local Browser Video Element */}
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    onLoadedMetadata={(e) => {
+                      if (e.target.videoWidth && e.target.videoHeight) {
+                        setVideoAspect(e.target.videoWidth / e.target.videoHeight);
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'contain',
+                      transform: cameraSource === 'local' ? 'scaleX(-1)' : 'none',
+                      display: isCameraActive && cameraSource === 'local' ? 'block' : 'none',
                     }}
                   />
-                )}
+
+                  {/* Face Positioning Guide Overlay */}
+                  {isCameraActive && cameraSource === 'local' && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        pointerEvents: 'none',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '42%',
+                          maxWidth: '220px',
+                          height: '68%',
+                          maxHeight: '280px',
+                          border: '2px dashed rgba(59, 130, 246, 0.85)',
+                          borderRadius: '50%',
+                          boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.25)',
+                          display: 'flex',
+                          alignItems: 'flex-end',
+                          justifyContent: 'center',
+                          paddingBottom: '12px',
+                        }}
+                      >
+                        <span
+                          style={{
+                            background: 'rgba(17, 24, 39, 0.85)',
+                            color: '#f3f4f6',
+                            fontSize: '0.75rem',
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            fontWeight: 500,
+                          }}
+                        >
+                          Align face inside oval
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Backend MJPEG Stream Element */}
+                  {isCameraActive && cameraSource === 'backend' && (
+                    <img
+                      ref={imgRef}
+                      crossOrigin="anonymous"
+                      src={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/video_feed/${selectedCameraId}/?token=${localStorage.getItem('access') || ''}`}
+                      alt="Camera Feed"
+                      style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+                      onError={() => {
+                        addToast('Failed to connect to backend camera feed.', 'error');
+                        setIsCameraActive(false);
+                      }}
+                    />
+                  )}
 
                 {/* Offline Placeholder */}
                 {!isCameraActive && (
@@ -521,7 +603,29 @@ export default function FaceRegistration() {
                   </div>
                 )}
               </div>
-            ) : (
+              {isCameraActive && cameraSource === 'local' && (
+                <div
+                  style={{
+                    marginBottom: '1.25rem',
+                    padding: '0.6rem 0.9rem',
+                    background: '#f0fdf4',
+                    border: '1px solid #bbf7d0',
+                    borderRadius: '8px',
+                    fontSize: '0.825rem',
+                    color: '#166534',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <span style={{ fontSize: '1.1rem' }}>💡</span>
+                  <span>
+                    <strong>Laptop Positioning Tip:</strong> Position your head inside the guide oval, tilt your screen so the camera faces you directly, and ensure good lighting.
+                  </span>
+                </div>
+              )}
+            </>
+          ) : (
               /* File Upload Zone */
               <div
                 onClick={() => fileInputRef.current?.click()}
