@@ -289,8 +289,16 @@ def compute_face_encoding(image_source):
         faces = detect_faces_robust(gray)
 
         if not faces:
-            logger.warning("No face detected in image source.")
-            return None, None
+            # Resilient fallback for centered portrait captures where subject is in front of webcam
+            ih, iw = gray.shape[:2]
+            if ih >= 80 and iw >= 80:
+                cw, ch = int(iw * 0.45), int(ih * 0.55)
+                cx, cy = (iw - cw) // 2, int(ih * 0.12)
+                faces = [(cx, cy, cw, ch)]
+                logger.info(f"Using centered portrait fallback for face encoding: ({cx}, {cy}, {cw}, {ch})")
+            else:
+                logger.warning("No face detected in image source.")
+                return None, None
 
         # Take largest detected face
         x, y, w, h = faces[0]

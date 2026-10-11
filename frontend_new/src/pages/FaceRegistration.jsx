@@ -205,12 +205,13 @@ export default function FaceRegistration() {
       setDetectedFacesCount(result.faceCount);
 
       if (result.faceCount === 0) {
-        let msg = '❌ No face detected in uploaded image! Please choose a clearer frontal photo.';
-        if (result.quality?.is_too_dark) msg = '❌ Image is too dark. Please choose a well-lit photo.';
-        if (result.quality?.is_too_bright) msg = '❌ Image is overexposed. Please choose a photo without harsh glare.';
-        if (result.quality?.is_blurry) msg = '❌ Photo is blurry. Please choose a sharper frontal photo.';
-        addToast(msg, 'error');
-        setIsProcessing(false);
+        let msg = '⚠️ Face detection was uncertain in this photo.';
+        if (result.quality?.is_too_dark) msg = '⚠️ Image is dark. Review preview or choose a well-lit photo.';
+        if (result.quality?.is_too_bright) msg = '⚠️ Image is overexposed. Review preview or choose a photo without glare.';
+        if (result.quality?.is_blurry) msg = '⚠️ Photo is blurry. Review preview or choose a sharper photo.';
+        addToast(msg, 'warning');
+        setPreviewBlob(file);
+        setPreviewUrl(URL.createObjectURL(file));
         return;
       }
 
@@ -279,16 +280,17 @@ export default function FaceRegistration() {
         setDetectedFacesCount(result.faceCount);
 
         if (result.faceCount === 0) {
-          let errorMsg = '❌ No face detected! Please position your face inside the guide oval and face the webcam.';
+          let errorMsg = '⚠️ Face detection was uncertain in this frame.';
           if (result.quality?.is_too_dark) {
-            errorMsg = '❌ Face not detected: Lighting is too dark. Please face a light source or turn on a light.';
+            errorMsg = '⚠️ Lighting is dark. You can retake with better lighting, or proceed if your face is clear.';
           } else if (result.quality?.is_too_bright) {
-            errorMsg = '❌ Face not detected: Image is overexposed. Please adjust lighting or reduce screen glare.';
+            errorMsg = '⚠️ Image is overexposed. You can retake, or proceed if your face is clear.';
           } else if (result.quality?.is_blurry) {
-            errorMsg = '❌ Face not detected: Image is blurry. Please hold steady and try again.';
+            errorMsg = '⚠️ Image is slightly blurry. You can retake holding steady, or proceed if your face is clear.';
           }
-          addToast(errorMsg, 'error');
-          setIsProcessing(false);
+          addToast(errorMsg, 'warning');
+          setPreviewBlob(blob);
+          setPreviewUrl(URL.createObjectURL(blob));
           return;
         }
 
@@ -722,6 +724,22 @@ export default function FaceRegistration() {
                 <p style={{ marginTop: 0, marginBottom: '1rem', color: '#4b5563', fontSize: '0.9rem' }}>
                   Review the image below. When confirmed, biometric features will be computed and saved for student #{selectedStudent}.
                 </p>
+                {detectedFacesCount === 0 && (
+                  <div
+                    style={{
+                      marginBottom: '1.25rem',
+                      padding: '0.75rem 1rem',
+                      background: '#fffbeb',
+                      border: '1px solid #fcd34d',
+                      borderRadius: '8px',
+                      color: '#92400e',
+                      fontSize: '0.85rem',
+                      lineHeight: '1.4',
+                    }}
+                  >
+                    ⚠️ <strong>Notice:</strong> Automatic face detection was uncertain. If your face is clearly visible, centered, and facing the camera in the preview below, click <strong>✅ Confirm & Save Face</strong>. Otherwise, click <strong>🔄 Retake</strong>.
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                   <img
                     src={previewUrl}
