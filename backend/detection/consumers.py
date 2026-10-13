@@ -15,16 +15,24 @@ class AlertConsumer(AsyncWebsocketConsumer):
             return
 
         self.group_name = "alerts"
-        await self.channel_layer.group_add(self.group_name, self.channel_name)
-        await self.accept()
-        logger.info(f"WebSocket connected: user={user.username}")
+        try:
+            if self.channel_layer is not None:
+                await self.channel_layer.group_add(self.group_name, self.channel_name)
+            await self.accept()
+            logger.info(f"WebSocket connected: user={user.username}")
+        except Exception as e:
+            logger.error(f"WebSocket connection error during connect(): {e}")
+            await self.close(code=1011)
 
     async def disconnect(self, close_code):
-        if hasattr(self, 'group_name'):
-            await self.channel_layer.group_discard(
-                self.group_name,
-                self.channel_name
-            )
+        try:
+            if hasattr(self, 'group_name') and self.channel_layer is not None:
+                await self.channel_layer.group_discard(
+                    self.group_name,
+                    self.channel_name
+                )
+        except Exception as e:
+            logger.debug(f"WebSocket disconnect error: {e}")
 
     async def receive(self, text_data):
         # Client isn't expected to send much, but just in case

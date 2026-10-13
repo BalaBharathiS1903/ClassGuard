@@ -196,7 +196,22 @@ CELERY_TASK_SERIALIZER = 'json'
 
 # --- Channel Layer: Redis for production, InMemoryChannelLayer fallback for development ---
 _redis_url = os.environ.get('REDIS_URL', '').strip()
+_redis_connected = False
 if _redis_url:
+    try:
+        import socket
+        from urllib.parse import urlparse
+        _parsed = urlparse(_redis_url)
+        _host = _parsed.hostname or 'localhost'
+        _port = _parsed.port or 6379
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as _s:
+            _s.settimeout(0.5)
+            if _s.connect_ex((_host, _port)) == 0:
+                _redis_connected = True
+    except Exception:
+        _redis_connected = False
+
+if _redis_connected:
     CHANNEL_LAYERS = {
         'default': {
             'BACKEND': 'channels_redis.core.RedisChannelLayer',
@@ -211,11 +226,11 @@ else:
             'BACKEND': 'channels.layers.InMemoryChannelLayer',
         },
     }
-    if DEBUG:
+    if DEBUG and _redis_url:
         import warnings
         warnings.warn(
-            "REDIS_URL not set — using InMemoryChannelLayer (development only, "
-            "WebSocket alerts may not work across processes).",
+            f"REDIS_URL was set to '{_redis_url}' but Redis server is not reachable. "
+            f"Using InMemoryChannelLayer dev fallback.",
             RuntimeWarning,
         )
 

@@ -15,7 +15,8 @@ export default function useAlertWebSocket(onAlert) {
 
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
-  const reconnectDelayRef = useRef(1000);
+  const reconnectDelayRef = useRef(2000);
+  const failureCountRef = useRef(0);
   const isUnmountedRef = useRef(false);
 
   useEffect(() => {
@@ -44,7 +45,8 @@ export default function useAlertWebSocket(onAlert) {
             return;
           }
           setIsConnected(true);
-          reconnectDelayRef.current = 1000;
+          failureCountRef.current = 0;
+          reconnectDelayRef.current = 2000;
         };
 
         ws.onmessage = (event) => {
@@ -58,8 +60,8 @@ export default function useAlertWebSocket(onAlert) {
           }
         };
 
-        ws.onerror = (err) => {
-          console.warn('WebSocket connection error (will fallback/retry):', err);
+        ws.onerror = () => {
+          // Handled gracefully in onclose
         };
 
         ws.onclose = (event) => {
@@ -71,9 +73,19 @@ export default function useAlertWebSocket(onAlert) {
             return;
           }
 
-          // Exponential backoff reconnect (max 10 seconds)
+          failureCountRef.current += 1;
+          if (failureCountRef.current > 5) {
+            // After 5 consecutive connection failures, relax to 30s
+            // (REST polling fallback continues to keep alerts updated)
+            reconnectTimeoutRef.current = setTimeout(() => {
+              connect();
+            }, 30000);
+            return;
+          }
+
+          // Exponential backoff reconnect (up to 15 seconds)
           const delay = reconnectDelayRef.current;
-          reconnectDelayRef.current = Math.min(delay * 1.5, 10000);
+          reconnectDelayRef.current = Math.min(delay * 1.5, 15000);
 
           reconnectTimeoutRef.current = setTimeout(() => {
             connect();

@@ -6,7 +6,18 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': 'http://localhost:8000',
-      '/ws': { target: 'ws://localhost:8000', ws: true },
+      '/ws': {
+        target: 'ws://localhost:8000',
+        ws: true,
+        configure: (proxy) => {
+          proxy.on('error', (err) => {
+            if (err.code === 'ECONNRESET' || err.code === 'ECONNABORTED' || err.code === 'ECONNREFUSED') {
+              return;
+            }
+            console.warn('[vite] ws proxy error:', err.message);
+          });
+        },
+      },
     },
   },
   test: {

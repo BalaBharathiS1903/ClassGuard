@@ -10,8 +10,8 @@ from detection.middleware import JwtAuthMiddleware
 
 application = ProtocolTypeRouter({
     "http": get_asgi_application(),
-    "websocket": JwtAuthMiddleware(
-        AuthMiddlewareStack(
+    "websocket": AuthMiddlewareStack(
+        JwtAuthMiddleware(
             URLRouter(
                 detection.routing.websocket_urlpatterns
             )
