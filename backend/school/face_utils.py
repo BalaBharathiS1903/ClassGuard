@@ -18,6 +18,25 @@ def get_face_cascades():
     if _cascades_loaded and _cascades:
         return _cascades
 
+    cascade_cls = getattr(cv2, 'CascadeClassifier', None)
+    if cascade_cls is None:
+        try:
+            import cv2.objdetect
+            cascade_cls = getattr(cv2.objdetect, 'CascadeClassifier', None)
+        except Exception:
+            cascade_cls = None
+
+    if cascade_cls is None:
+        logger.error(
+            "CRITICAL: cv2 module has no 'CascadeClassifier' attribute. "
+            "This happens when 'opencv-python' and 'opencv-python-headless' conflict or when OpenCV 5.0 is corrupted. "
+            "To fix, run:\n"
+            "  pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python\n"
+            "  pip install \"opencv-python>=4.8.0,<5.0.0\""
+        )
+        _cascades_loaded = True
+        return _cascades
+
     cascade_dir = getattr(cv2, 'data', None)
     base_path = getattr(cascade_dir, 'haarcascades', '') if cascade_dir else ''
     if not base_path or not os.path.isdir(base_path):
@@ -39,7 +58,7 @@ def get_face_cascades():
         xml_path = os.path.join(base_path, xml_name) if base_path else xml_name
         if os.path.exists(xml_path):
             try:
-                clf = cv2.CascadeClassifier(xml_path)
+                clf = cascade_cls(xml_path)
                 if not clf.empty():
                     _cascades[name] = clf
                     logger.debug(f"Loaded cascade {name} from {xml_path}")

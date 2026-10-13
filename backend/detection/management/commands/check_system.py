@@ -40,7 +40,8 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.SUCCESS(f'  ✓  Loaded cascades: {list(cascades.keys())}'))
             else:
                 self.stdout.write(self.style.ERROR('  ✗  MODEL_ERROR: No face cascades found!'))
-                self.stdout.write('     Reinstall: pip install opencv-python-headless')
+                self.stdout.write('     Fix: pip uninstall -y opencv-python opencv-python-headless')
+                self.stdout.write('          pip install "opencv-python>=4.8.0,<5.0.0"')
                 all_ok = False
         except ImportError as e:
             self.stdout.write(self.style.ERROR(f'  ✗  OpenCV not installed: {e}'))

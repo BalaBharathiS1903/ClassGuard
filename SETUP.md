@@ -168,6 +168,7 @@ Simply add students and register their faces through the Face Registration page.
 | WebSocket alerts not working | Redis not running | Install Redis, or leave `REDIS_URL` empty in `.env` for dev fallback |
 | `pip install` fails on `dlib` | Missing build tools | Install Visual C++ Build Tools or use `pip install cmake dlib` |
 | Slow startup | PyTorch/YOLO loading | Normal on first run; subsequent starts are faster |
+| `cv2 has no attribute 'CascadeClassifier'` | OpenCV 5.0 or conflicting opencv packages | Run: `pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python` followed by `pip install "opencv-python>=4.8.0,<5.0.0"` |
 | Camera permission denied | Browser security | Use `http://localhost:5173` (not `http://127.0.0.1` or `0.0.0.0`) |
 
 ## Hardware Notes
