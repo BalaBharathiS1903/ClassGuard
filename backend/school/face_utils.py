@@ -19,12 +19,8 @@ def get_face_cascades():
         return _cascades
 
     cascade_cls = getattr(cv2, 'CascadeClassifier', None)
-    if cascade_cls is None:
-        try:
-            import cv2.objdetect
-            cascade_cls = getattr(cv2.objdetect, 'CascadeClassifier', None)
-        except Exception:
-            cascade_cls = None
+    if cascade_cls is None and hasattr(cv2, 'objdetect'):
+        cascade_cls = getattr(cv2.objdetect, 'CascadeClassifier', None)
 
     if cascade_cls is None:
         logger.error(

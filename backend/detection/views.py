@@ -226,6 +226,14 @@ class CameraViewSet(viewsets.ModelViewSet):
     serializer_class = CameraSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return Camera.objects.none()
+        if getattr(user, 'role', None) == 'parent' and not (user.is_staff or user.is_superuser):
+            return Camera.objects.none()
+        return Camera.objects.all()
+
     @action(detail=True, methods=['get'])
     def snapshot(self, request, pk=None):
         """Return the current frame from this camera as a single JPEG image.
@@ -269,6 +277,27 @@ class CameraViewSet(viewsets.ModelViewSet):
         return response
 
 
+def broadcast_alert(alert):
+    """Broadcast an alert to connected WebSocket clients via channels layer."""
+    try:
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            alert_data = AlertSerializer(alert).data
+            async_to_sync(channel_layer.group_send)(
+                "alerts",
+                {
+                    "type": "send_alert",
+                    "message": alert.description,
+                    "alert": alert_data,
+                }
+            )
+            logger.debug(f"Broadcasted alert {alert.id} to WebSocket clients")
+    except Exception as e:
+        logger.warning(f"Could not broadcast alert to WebSocket: {e}")
+
+
 from rest_framework.decorators import action, api_view, permission_classes as perm_classes
 from rest_framework.response import Response
 from rest_framework import status
@@ -285,6 +314,18 @@ class AlertViewSet(viewsets.ModelViewSet):
     queryset = Alert.objects.all().order_by('-created_at')
     serializer_class = AlertSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return Alert.objects.none()
+        if getattr(user, 'role', None) == 'parent' and not (user.is_staff or user.is_superuser):
+            return Alert.objects.filter(student__parent=user).order_by('-created_at')
+        return Alert.objects.all().order_by('-created_at')
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        broadcast_alert(instance)
     
     def _send_twilio_alert(self, to_number, message, channel='whatsapp', media_url=None):
         try:
@@ -493,6 +534,7 @@ class CameraReader:
             if success:
                 self.frame = frame.copy()
                 self.status = 'connected'
+                time.sleep(0.015)  # Cap capture loop (~60 FPS) to prevent high CPU utilization
             else:
                 # Camera disconnected or not ready, try reopening
                 cap.release()
@@ -621,18 +663,42 @@ def gen_frames(camera):
                     if snapshot_path:
                         alert.snapshot.name = snapshot_path
                         alert.save(update_fields=['snapshot'])
+                    broadcast_alert(alert)
                 except Exception as e:
                     logger.error(f"Failed to create motion alert: {e}")
 
             # === FACE DETECTION & RECOGNITION ===
-            faces = detect_faces_robust(gray)
-            
+            faces = list(detect_faces_robust(gray))
+
+            # If no faces found by Haar cascade, try head crops of YOLO-detected persons
+            if len(faces) == 0 and yolo_model is not None:
+                try:
+                    with yolo_lock:
+                        yolo_crops = yolo_model(frame, verbose=False)
+                    for yc in yolo_crops:
+                        for box in yc.boxes:
+                            if int(box.cls[0]) == 0 and float(box.conf[0]) >= 0.4:
+                                bx1, by1, bx2, by2 = map(int, box.xyxy[0])
+                                head_h = max(30, int((by2 - by1) * 0.35))
+                                head_w = max(30, bx2 - bx1)
+                                hx1 = max(0, bx1)
+                                hy1 = max(0, by1)
+                                hx2 = min(frame.shape[1], bx1 + head_w)
+                                hy2 = min(frame.shape[0], by1 + head_h)
+                                if (hy2 - hy1) >= 20 and (hx2 - hx1) >= 20:
+                                    head_gray = gray[hy1:hy2, hx1:hx2]
+                                    head_faces = detect_faces_robust(head_gray)
+                                    for (fx, fy, fw, fh) in head_faces:
+                                        faces.append((hx1 + fx, hy1 + fy, fw, fh))
+                except Exception as e:
+                    logger.debug(f"YOLO head crop detection skipped: {e}")
+
             for (x, y, w, h) in faces:
                 face_roi = gray[y:y+h, x:x+w]
-                
+
                 # Try to match against known faces
                 student_id, student_name, confidence = match_face(face_roi)
-                
+
                 if student_name:
                     # Known student detected
                     color = (0, 255, 0)  # Green
@@ -640,7 +706,7 @@ def gen_frames(camera):
                     cv2.rectangle(frame, (x, y), (x+w, y+h), color, 2)
                     cv2.putText(frame, label, (x, y - 10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-                    
+
                     # Create recognition alert (throttled)
                     alert_key = f"rec_{student_id}_{camera.id}"
                     last_rec = last_alert_time.get(alert_key, 0)
@@ -659,6 +725,7 @@ def gen_frames(camera):
                             if snapshot_path:
                                 alert.snapshot.name = snapshot_path
                                 alert.save(update_fields=['snapshot'])
+                            broadcast_alert(alert)
                         except Exception as e:
                             logger.error(f"Failed to create recognition alert: {e}")
                 else:
@@ -667,7 +734,7 @@ def gen_frames(camera):
                     cv2.rectangle(frame, (x, y), (x+w, y+h), color, 2)
                     cv2.putText(frame, "Unknown", (x, y - 10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-                    
+
                     # Create unauthorized alert (max 1 per 60 seconds)
                     alert_key = f"unauthorized_{camera.id}"
                     last_unauth = last_alert_time.get(alert_key, 0)
@@ -684,6 +751,7 @@ def gen_frames(camera):
                             if snapshot_path:
                                 alert.snapshot.name = snapshot_path
                                 alert.save(update_fields=['snapshot'])
+                            broadcast_alert(alert)
                         except Exception as e:
                             logger.error(f"Failed to create unauthorized alert: {e}")
 
@@ -691,7 +759,7 @@ def gen_frames(camera):
             if yolo_model is not None:
                 with yolo_lock:
                     results = yolo_model(frame, verbose=False)
-                
+
                 person_count = 0
                 for result in results:
                     for box in result.boxes:
@@ -703,18 +771,20 @@ def gen_frames(camera):
                             cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 165, 0), 2)
                             cv2.putText(frame, f"Person {conf:.1%}", (x1, y1 - 10),
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 165, 0), 2)
-                
+
                 # Show person count on frame
                 if person_count > 0:
                     cv2.putText(frame, f"People: {person_count}", (10, 30),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-        
+
         # Encode and yield frame
         ret, buffer = cv2.imencode('.jpg', frame)
         if not ret:
+            time.sleep(0.02)
             continue
-            
+
         frame_bytes = buffer.tobytes()
+        time.sleep(0.03)  # Yield at ~30 FPS to reduce CPU/network load on low-spec computers
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
     # cap.release() not needed, reader runs indefinitely
@@ -857,8 +927,12 @@ def video_feed(request, camera_id):
             user_auth = jwt_auth.authenticate(drf_request)
             if user_auth is None:
                 return JsonResponse({'error': 'Authentication required'}, status=401)
+            request.user = user_auth[0]
         except (AuthenticationFailed, Exception):
             return JsonResponse({'error': 'Authentication required'}, status=401)
+
+    if getattr(request.user, 'role', None) == 'parent' and not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({'error': 'Permission denied: Parents cannot view CCTV streams.'}, status=403)
 
     camera = get_object_or_404(Camera, id=camera_id)
     response = StreamingHttpResponse(gen_frames(camera),

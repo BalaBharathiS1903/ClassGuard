@@ -39,6 +39,14 @@ class StudentViewSet(viewsets.ModelViewSet):
     serializer_class = StudentSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return Student.objects.none()
+        if getattr(user, 'role', None) == 'parent' and not (user.is_staff or user.is_superuser):
+            return Student.objects.filter(parent=user)
+        return Student.objects.all()
+
     def perform_update(self, serializer):
         instance = serializer.save()
         # If a photo was uploaded, compute face encoding

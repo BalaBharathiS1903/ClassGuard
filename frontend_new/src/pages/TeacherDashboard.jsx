@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Sidebar from '../components/Sidebar';
 import AlertCard from '../components/AlertCard';
 import WebcamFeed from '../components/WebcamFeed';
 import useDeviceList from '../hooks/useDeviceList';
 import { useToast, ToastContainer } from '../components/Toast';
 import authFetch from '../utils/authFetch';
+import useAlertWebSocket from '../hooks/useAlertWebSocket';
 import styles from './TeacherDashboard.module.css';
 
 export default function TeacherDashboard() {
@@ -20,6 +21,46 @@ export default function TeacherDashboard() {
   const prevAlertCountRef = useRef(0);
   const hasInitializedRef = useRef(false);
 
+  const handleNewAlert = useCallback((newestAlert) => {
+    if (!newestAlert) return;
+    const type = newestAlert.alert_type || newestAlert.type;
+    if (type === 'recognition') {
+      addToast('🚨 Face Recognized!', 'info', {
+        playBeep: true,
+        duration: 60000,
+        beepInterval: 15000,
+        studentData: {
+          student_name: newestAlert.student_name,
+          student_roll_number: newestAlert.student_roll_number,
+          student_grade: newestAlert.student_grade,
+          student_section: newestAlert.student_section,
+          student_photo: newestAlert.student_photo,
+          alert_type: type,
+          camera_name: newestAlert.camera_name || 'Camera',
+          time: newestAlert.created_at ? new Date(newestAlert.created_at).toLocaleString() : ''
+        },
+        snapshot: newestAlert.snapshot
+      });
+    } else if (type === 'unauthorized') {
+      addToast('⚠️ Unknown Person Detected!', 'warning', {
+        playBeep: true,
+        duration: 30000,
+        beepInterval: 15000,
+        snapshot: newestAlert.snapshot
+      });
+    }
+  }, [addToast]);
+
+  // Real-time WebSocket alerts
+  useAlertWebSocket(useCallback((wsAlert) => {
+    if (!wsAlert) return;
+    setAlerts(prev => {
+      if (prev.some(a => a.id === wsAlert.id)) return prev;
+      return [wsAlert, ...prev];
+    });
+    handleNewAlert(wsAlert);
+  }, [handleNewAlert]));
+
   useEffect(() => {
     const fetchAlerts = () => {
       authFetch('/api/v1/alerts/')
@@ -32,34 +73,7 @@ export default function TeacherDashboard() {
             setAlerts(data);
             if (hasInitializedRef.current && data.length > prevAlertCountRef.current) {
               const newestAlert = data[0];
-              if (newestAlert) {
-                const type = newestAlert.alert_type || newestAlert.type;
-                if (type === 'recognition') {
-                  addToast('🚨 Face Recognized!', 'info', {
-                    playBeep: true,
-                    duration: 60000,
-                    beepInterval: 15000,
-                    studentData: {
-                      student_name: newestAlert.student_name,
-                      student_roll_number: newestAlert.student_roll_number,
-                      student_grade: newestAlert.student_grade,
-                      student_section: newestAlert.student_section,
-                      student_photo: newestAlert.student_photo,
-                      alert_type: type,
-                      camera_name: newestAlert.camera_name || 'Camera',
-                      time: newestAlert.created_at ? new Date(newestAlert.created_at).toLocaleString() : ''
-                    },
-                    snapshot: newestAlert.snapshot
-                  });
-                } else if (type === 'unauthorized') {
-                  addToast('⚠️ Unknown Person Detected!', 'warning', {
-                    playBeep: true,
-                    duration: 30000,
-                    beepInterval: 15000,
-                    snapshot: newestAlert.snapshot
-                  });
-                }
-              }
+              handleNewAlert(newestAlert);
             }
             prevAlertCountRef.current = data.length;
             hasInitializedRef.current = true;
@@ -81,7 +95,7 @@ export default function TeacherDashboard() {
     return () => {
       clearInterval(intervalId);
     };
-  }, [addToast]);
+  }, [handleNewAlert]);
 
   const fetchStudentDetails = (id) => {
     authFetch(`/api/v1/students/${id}/`)

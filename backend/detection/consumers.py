@@ -31,7 +31,9 @@ class AlertConsumer(AsyncWebsocketConsumer):
         pass
 
     async def send_alert(self, event):
-        message = event['message']
-        await self.send(text_data=json.dumps({
-            'message': message
-        }))
+        message = event.get('message', '')
+        alert = event.get('alert', None)
+        payload = {'message': message}
+        if alert is not None:
+            payload['alert'] = alert
+        await self.send(text_data=json.dumps(payload))

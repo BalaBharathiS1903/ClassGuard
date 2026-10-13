@@ -3,6 +3,7 @@ import { useToast, ToastContainer } from '../components/Toast';
 import Sidebar from '../components/Sidebar';
 import AlertCard from '../components/AlertCard';
 import authFetch from '../utils/authFetch';
+import useAlertWebSocket from '../hooks/useAlertWebSocket';
 import styles from './TeacherDashboard.module.css';
 
 const formatType = (type) => {
@@ -26,6 +27,46 @@ export default function Alerts() {
   const [selectedForwardStaff, setSelectedForwardStaff] = useState('');
   const [messageChannel, setMessageChannel] = useState('whatsapp');
 
+  const handleNewAlert = useCallback((newestAlert) => {
+    if (!newestAlert) return;
+    const type = newestAlert.alert_type || newestAlert.type;
+    if (type === 'recognition') {
+      addToast('🚨 Face Recognized!', 'info', {
+        playBeep: true,
+        duration: 60000,
+        beepInterval: 15000,
+        studentData: {
+          student_name: newestAlert.student_name,
+          student_roll_number: newestAlert.student_roll_number,
+          student_grade: newestAlert.student_grade,
+          student_section: newestAlert.student_section,
+          student_photo: newestAlert.student_photo,
+          alert_type: newestAlert.alert_type,
+          camera_name: newestAlert.camera_name || 'Camera',
+          time: newestAlert.created_at ? new Date(newestAlert.created_at).toLocaleString() : ''
+        },
+        snapshot: newestAlert.snapshot
+      });
+    } else if (type === 'unauthorized') {
+      addToast('⚠️ Unknown Person Detected!', 'warning', {
+        playBeep: true,
+        duration: 30000,
+        beepInterval: 15000,
+        snapshot: newestAlert.snapshot
+      });
+    }
+  }, [addToast]);
+
+  // Real-time WebSocket alerts
+  useAlertWebSocket(useCallback((wsAlert) => {
+    if (!wsAlert) return;
+    setAlerts(prev => {
+      if (prev.some(a => a.id === wsAlert.id)) return prev;
+      return [wsAlert, ...prev];
+    });
+    handleNewAlert(wsAlert);
+  }, [handleNewAlert]));
+
   useEffect(() => {
     const fetchAlerts = () => {
       authFetch('/api/v1/alerts/')
@@ -37,32 +78,7 @@ export default function Alerts() {
           if (Array.isArray(data)) {
             if (hasInitializedRef.current && data.length > prevCountRef.current) {
               const newestAlert = data[0];
-              const type = newestAlert.alert_type || newestAlert.type;
-              if (type === 'recognition') {
-                addToast('🚨 Face Recognized!', 'info', {
-                  playBeep: true,
-                  duration: 60000,
-                  beepInterval: 15000,
-                  studentData: {
-                    student_name: newestAlert.student_name,
-                    student_roll_number: newestAlert.student_roll_number,
-                    student_grade: newestAlert.student_grade,
-                    student_section: newestAlert.student_section,
-                    student_photo: newestAlert.student_photo,
-                    alert_type: newestAlert.alert_type,
-                    camera_name: newestAlert.camera_name || 'Camera',
-                    time: newestAlert.created_at ? new Date(newestAlert.created_at).toLocaleString() : ''
-                  },
-                  snapshot: newestAlert.snapshot
-                });
-              } else if (type === 'unauthorized') {
-                addToast('⚠️ Unknown Person Detected!', 'warning', {
-                  playBeep: true,
-                  duration: 30000,
-                  beepInterval: 15000,
-                  snapshot: newestAlert.snapshot
-                });
-              }
+              handleNewAlert(newestAlert);
             }
             prevCountRef.current = data.length;
             hasInitializedRef.current = true;
@@ -84,8 +100,7 @@ export default function Alerts() {
     const intervalId = setInterval(fetchAlerts, 5000);
 
     return () => clearInterval(intervalId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addToast]);
+  }, [handleNewAlert]);
 
   const fetchStudentDetails = (id) => {
     authFetch(`/api/v1/students/${id}/`)
