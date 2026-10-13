@@ -805,30 +805,25 @@ def gen_frames(camera):
     # cap.release() not needed, reader runs indefinitely
 
 
-def _probe_local_webcams(max_index=4):
-    """Probe local webcam indices 0..max_index-1 and return list of available indices."""
+def _probe_local_webcams(max_index=3):
+    """Probe local webcam indices 0..max_index-1 quickly using DirectShow.
+    Breaks immediately on the first non-openable index to prevent driver stalls.
+    """
     available = []
     for idx in range(max_index):
         try:
             cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
-            if cap.isOpened():
-                ret, frame = cap.read()
-                if ret and frame is not None:
-                    available.append(idx)
+            if not cap.isOpened():
                 cap.release()
+                break
+            ret, frame = cap.read()
+            cap.release()
+            if ret and frame is not None:
+                available.append(idx)
             else:
-                cap.release()
-                # Also try default backend
-                cap2 = cv2.VideoCapture(idx)
-                if cap2.isOpened():
-                    ret, frame = cap2.read()
-                    if ret and frame is not None:
-                        available.append(idx)
-                    cap2.release()
-                else:
-                    cap2.release()
+                break
         except Exception:
-            pass
+            break
     return available
 
 

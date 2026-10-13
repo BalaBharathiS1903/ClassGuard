@@ -12,15 +12,10 @@ export default function Cameras() {
   const toastShown = useRef(false);
   const [scanning, setScanning] = useState(false);
 
-  const hasAutoScannedRef = useRef(false);
-
   useEffect(() => {
     if (devices.length > 0 && !toastShown.current) {
       addToast(`Found ${devices.length} camera(s)!`, 'success', { duration: 4000 });
       toastShown.current = true;
-    } else if (devices.length === 0 && !hasAutoScannedRef.current) {
-      hasAutoScannedRef.current = true;
-      handleScanWebcams();
     }
   }, [devices.length, addToast]);
 

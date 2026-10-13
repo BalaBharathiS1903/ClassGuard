@@ -5,7 +5,18 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/api': 'http://localhost:8000',
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('error', (err) => {
+            if (err.code === 'ECONNREFUSED' || err.code === 'ECONNRESET' || err.code === 'ECONNABORTED') {
+              return;
+            }
+            console.warn('[vite] http proxy error:', err.message);
+          });
+        },
+      },
       '/ws': {
         target: 'ws://localhost:8000',
         ws: true,
