@@ -10,7 +10,7 @@ describe('AlertCard Component', () => {
       </BrowserRouter>
     );
     
-    expect(screen.getByText('roaming')).toBeInTheDocument();
+    expect(screen.getByText('Roaming')).toBeInTheDocument();
     expect(screen.getByText('5 mins ago')).toBeInTheDocument();
   });
 });

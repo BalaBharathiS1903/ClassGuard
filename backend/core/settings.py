@@ -45,6 +45,7 @@ TWILIO_WHATSAPP_NUMBER = os.environ.get('TWILIO_WHATSAPP_NUMBER', '')
 TWILIO_PHONE_NUMBER = os.environ.get('TWILIO_PHONE_NUMBER', '')
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -193,15 +194,30 @@ CELERY_RESULT_BACKEND = CELERY_BROKER_URL
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 
-# --- Security: Use Redis channel layer (InMemoryChannelLayer is for testing only) ---
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            'hosts': [os.environ.get('REDIS_URL', 'redis://localhost:6379/0')],
+# --- Channel Layer: Redis for production, InMemoryChannelLayer fallback for development ---
+_redis_url = os.environ.get('REDIS_URL', '').strip()
+if _redis_url:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                'hosts': [_redis_url],
+            },
         },
-    },
-}
+    }
+else:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        },
+    }
+    if DEBUG:
+        import warnings
+        warnings.warn(
+            "REDIS_URL not set — using InMemoryChannelLayer (development only, "
+            "WebSocket alerts may not work across processes).",
+            RuntimeWarning,
+        )
 
 # --- Security: Cookie hardening ---
 SESSION_COOKIE_SECURE = not DEBUG

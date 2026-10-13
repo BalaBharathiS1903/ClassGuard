@@ -34,7 +34,6 @@ export default function TeacherDashboard() {
               const newestAlert = data[0];
               if (newestAlert) {
                 const type = newestAlert.alert_type || newestAlert.type;
-                // Only show popup and play beep for Face Recognition
                 if (type === 'recognition') {
                   addToast('🚨 Face Recognized!', 'info', {
                     playBeep: true,
@@ -50,6 +49,13 @@ export default function TeacherDashboard() {
                       camera_name: newestAlert.camera_name || 'Camera',
                       time: newestAlert.created_at ? new Date(newestAlert.created_at).toLocaleString() : ''
                     },
+                    snapshot: newestAlert.snapshot
+                  });
+                } else if (type === 'unauthorized') {
+                  addToast('⚠️ Unknown Person Detected!', 'warning', {
+                    playBeep: true,
+                    duration: 30000,
+                    beepInterval: 15000,
                     snapshot: newestAlert.snapshot
                   });
                 }
@@ -182,7 +188,7 @@ export default function TeacherDashboard() {
             <div style={{display: 'flex', gap: '1.5rem'}}>
               {studentDetails.photo ? (
                 <img 
-                  src={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${studentDetails.photo}`} 
+                  src={studentDetails.photo.startsWith('http') ? studentDetails.photo : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${studentDetails.photo}`} 
                   alt={studentDetails.name} 
                   style={{width: '120px', height: '120px', objectFit: 'cover', borderRadius: '8px'}} 
                 />

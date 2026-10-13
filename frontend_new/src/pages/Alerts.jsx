@@ -38,7 +38,6 @@ export default function Alerts() {
             if (hasInitializedRef.current && data.length > prevCountRef.current) {
               const newestAlert = data[0];
               const type = newestAlert.alert_type || newestAlert.type;
-              // Only show popup and play beep for Face Recognition
               if (type === 'recognition') {
                 addToast('🚨 Face Recognized!', 'info', {
                   playBeep: true,
@@ -54,6 +53,13 @@ export default function Alerts() {
                     camera_name: newestAlert.camera_name || 'Camera',
                     time: newestAlert.created_at ? new Date(newestAlert.created_at).toLocaleString() : ''
                   },
+                  snapshot: newestAlert.snapshot
+                });
+              } else if (type === 'unauthorized') {
+                addToast('⚠️ Unknown Person Detected!', 'warning', {
+                  playBeep: true,
+                  duration: 30000,
+                  beepInterval: 15000,
                   snapshot: newestAlert.snapshot
                 });
               }
@@ -183,7 +189,7 @@ export default function Alerts() {
             <div style={{display: 'flex', gap: '1.5rem'}}>
               {studentDetails.photo ? (
                 <img 
-                  src={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${studentDetails.photo}`} 
+                  src={studentDetails.photo.startsWith('http') ? studentDetails.photo : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${studentDetails.photo}`} 
                   alt={studentDetails.name} 
                   style={{width: '120px', height: '120px', objectFit: 'cover', borderRadius: '8px'}} 
                 />
@@ -251,7 +257,7 @@ export default function Alerts() {
                 <p><strong>Severity:</strong> <span style={{textTransform: 'capitalize', color: selectedAlert.severity === 'high' ? 'red' : 'orange'}}>{selectedAlert.severity || 'medium'}</span></p>
                 <p><strong>Description:</strong> {selectedAlert.description || 'No description available'}</p>
                 {selectedAlert.student_name && <p><strong>Student Recognized:</strong> {selectedAlert.student_name}</p>}
-                <p><strong>Camera:</strong> {selectedAlert.camera || 'Main Camera'}</p>
+                <p><strong>Camera:</strong> {selectedAlert.camera_name || selectedAlert.camera || 'Main Camera'}</p>
               </div>
               
               <hr style={{ border: '1px solid #eee', margin: '1rem 0' }} />

@@ -23,21 +23,6 @@ from django.core.files.base import ContentFile
 from ultralytics import YOLO
 import logging
 import threading
-
-logger = logging.getLogger(__name__)
-
-# --- YOLO Model ---
-yolo_lock = threading.Lock()
-try:
-    yolo_model = YOLO('yolov8n.pt')
-except Exception as e:
-    logger.error(f"Error loading YOLO model: {e}")
-    yolo_model = None
-
-# --- Alert throttling ---
-last_alert_time = {}
-
-# --- Face Detection & Recognition Utilities ---
 from school.face_utils import (
     get_face_cascades,
     detect_faces_robust,
@@ -46,6 +31,57 @@ from school.face_utils import (
     compare_face_features,
     assess_face_quality,
 )
+
+logger = logging.getLogger(__name__)
+
+# --- YOLO Model ---
+yolo_lock = threading.Lock()
+
+def _load_yolo():
+    """Load YOLO model, auto-downloading if needed. Returns model or None."""
+    model_path = os.path.join(settings.BASE_DIR, 'yolov8n.pt')
+    try:
+        model = YOLO(model_path if os.path.exists(model_path) else 'yolov8n.pt')
+        logger.info("YOLO model loaded successfully.")
+        return model
+    except Exception as e:
+        logger.warning(
+            f"MODEL_ERROR: YOLO model could not be loaded: {e}. "
+            f"Person detection will be disabled. "
+            f"To fix, run: python -c \"from ultralytics import YOLO; YOLO('yolov8n.pt')\""
+        )
+        return None
+
+yolo_model = _load_yolo()
+
+
+# --- Startup Diagnostics ---
+def _log_startup_diagnostics():
+    """Log system readiness at startup so problems are immediately visible."""
+    import platform
+    diag = []
+    diag.append(f"DIAG: Python {platform.python_version()} on {platform.system()} {platform.machine()}")
+    diag.append(f"DIAG: OpenCV {cv2.__version__}, NumPy {np.__version__}")
+
+    cascades = get_face_cascades()
+    if cascades:
+        diag.append(f"DIAG: Face cascades loaded: {list(cascades.keys())}")
+    else:
+        diag.append("DIAG: WARNING — No face cascades loaded. Face detection will not work.")
+
+    if yolo_model is not None:
+        diag.append("DIAG: YOLO model loaded successfully.")
+    else:
+        diag.append("DIAG: WARNING — YOLO model not loaded. Person detection disabled.")
+        diag.append("DIAG: To fix, run: python -c \"from ultralytics import YOLO; YOLO('yolov8n.pt')\" to auto-download.")
+
+    for line in diag:
+        logger.info(line)
+
+_log_startup_diagnostics()
+
+# --- Alert throttling ---
+last_alert_time = {}
 
 def get_face_cascade():
     """Backward compatibility wrapper returning primary cascade."""
@@ -74,7 +110,11 @@ def load_known_faces():
     global known_faces, known_faces_loaded_at
     with _known_faces_lock:
         try:
-            students = Student.objects.filter(photo__isnull=False).exclude(photo='')
+            from django.db.models import Q
+            students = Student.objects.filter(
+                (Q(face_encoding__isnull=False) & ~Q(face_encoding='')) |
+                (Q(photo__isnull=False) & ~Q(photo=''))
+            )
             new_faces = {}
 
             for student in students:
@@ -836,3 +876,89 @@ def video_feed(request, camera_id):
         response['Access-Control-Allow-Origin'] = '*'
 
     return response
+
+
+@api_view(['GET'])
+@perm_classes([IsAuthenticated])
+def health_check(request):
+    """Diagnostic endpoint to verify all subsystems are operational."""
+    from django.db import connection
+    import platform
+
+    checks = {}
+
+    # 1. Database
+    try:
+        connection.ensure_connection()
+        checks['database'] = {'status': 'ok', 'engine': settings.DATABASES['default']['ENGINE']}
+    except Exception as e:
+        checks['database'] = {'status': 'error', 'message': str(e)}
+
+    # 2. Face cascades
+    cascades = get_face_cascades()
+    checks['face_cascades'] = {
+        'status': 'ok' if cascades else 'error',
+        'loaded': list(cascades.keys()) if cascades else [],
+        'message': '' if cascades else 'MODEL_ERROR: No Haar cascade files found. Reinstall opencv-python-headless.',
+    }
+
+    # 3. YOLO model
+    checks['yolo_model'] = {
+        'status': 'ok' if yolo_model is not None else 'warning',
+        'message': '' if yolo_model is not None else 'MODEL_ERROR: yolov8n.pt not loaded. Person detection disabled. Run: python -c "from ultralytics import YOLO; YOLO(\'yolov8n.pt\')"',
+    }
+
+    # 4. Known faces
+    if not known_faces:
+        load_known_faces()
+    student_count = Student.objects.count()
+    students_with_photos = Student.objects.filter(photo__isnull=False).exclude(photo='').count()
+    checks['face_recognition'] = {
+        'status': 'ok' if len(known_faces) > 0 else ('warning' if student_count == 0 else 'error'),
+        'known_faces_loaded': len(known_faces),
+        'total_students': student_count,
+        'students_with_photos': students_with_photos,
+        'message': '' if len(known_faces) > 0 else (
+            'FACE_DATA_ERROR: No registered face encodings loaded. '
+            + ('Register students with photos first.' if students_with_photos == 0
+               else f'{students_with_photos} students have photos but encodings may be missing. Re-upload photos or check logs.')
+        ),
+    }
+
+    # 5. Redis/Channel layer
+    try:
+        from channels.layers import get_channel_layer
+        layer = get_channel_layer()
+        backend = type(layer).__module__ + '.' + type(layer).__name__
+        checks['channel_layer'] = {'status': 'ok', 'backend': backend}
+    except Exception as e:
+        checks['channel_layer'] = {'status': 'error', 'message': str(e)}
+
+    # 6. Camera status
+    active_cameras = Camera.objects.filter(status='online').count()
+    total_cameras = Camera.objects.count()
+    checks['cameras'] = {
+        'status': 'ok' if active_cameras > 0 else ('warning' if total_cameras == 0 else 'error'),
+        'total': total_cameras,
+        'online': active_cameras,
+        'message': '' if active_cameras > 0 else (
+            'CAMERA_ERROR: No cameras online. Use "Scan Webcams" in the Cameras page or register one.'
+        ),
+    }
+
+    # Overall
+    overall = 'ok'
+    for c in checks.values():
+        if c['status'] == 'error':
+            overall = 'error'
+            break
+        if c['status'] == 'warning':
+            overall = 'warning'
+
+    return Response({
+        'status': overall,
+        'python': platform.python_version(),
+        'opencv': cv2.__version__,
+        'numpy': np.__version__,
+        'checks': checks,
+    })

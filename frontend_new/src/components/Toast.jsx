@@ -14,13 +14,33 @@ const ICONS = {
 let _audioCtx = null;
 
 const getAudioContext = () => {
-  if (!_audioCtx) {
+  if (!_audioCtx && typeof window !== 'undefined') {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) return null;
     _audioCtx = new AudioContextClass();
   }
   return _audioCtx;
 };
+
+// Proactively unlock AudioContext on the user's first interaction anywhere on the page
+if (typeof window !== 'undefined') {
+  const unlockAudio = () => {
+    try {
+      const ctx = getAudioContext();
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+    } catch {
+      // AudioContext not allowed yet
+    }
+    window.removeEventListener('click', unlockAudio);
+    window.removeEventListener('keydown', unlockAudio);
+    window.removeEventListener('touchstart', unlockAudio);
+  };
+  window.addEventListener('click', unlockAudio, { passive: true, once: true });
+  window.addEventListener('keydown', unlockAudio, { passive: true, once: true });
+  window.addEventListener('touchstart', unlockAudio, { passive: true, once: true });
+}
 
 const playBeepSound = async () => {
   try {
@@ -29,7 +49,12 @@ const playBeepSound = async () => {
 
     // Resume if suspended (browser autoplay policy)
     if (ctx.state === 'suspended') {
-      await ctx.resume();
+      try {
+        await ctx.resume();
+      } catch (resumeErr) {
+        console.warn("AudioContext awaiting user gesture to play sound:", resumeErr);
+        return;
+      }
     }
 
     // Play a 3-tone alert pattern: beep-beep-beep

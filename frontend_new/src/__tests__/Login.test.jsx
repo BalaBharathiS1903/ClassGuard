@@ -10,7 +10,7 @@ describe('Login Component', () => {
       </BrowserRouter>
     );
     
-    expect(screen.getByText('ClassGuard')).toBeInTheDocument();
+    expect(screen.getByText(/ClassGuard/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Username')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Password')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
