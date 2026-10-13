@@ -447,7 +447,12 @@ class CameraReader:
     
     @classmethod
     def get_instance(cls, rtsp_url):
-        if rtsp_url not in cls._instances or not cls._instances[rtsp_url].running:
+        if rtsp_url in cls._instances:
+            inst = cls._instances[rtsp_url]
+            # If the instance died or stopped, purge it so it can be recreated
+            if not inst.running or (inst.status == 'error' and not inst.thread.is_alive()):
+                del cls._instances[rtsp_url]
+        if rtsp_url not in cls._instances:
             cls._instances[rtsp_url] = cls(rtsp_url)
         return cls._instances[rtsp_url]
 
@@ -475,24 +480,32 @@ class CameraReader:
         
         def get_cap():
             if isinstance(url, int):
-                # Try DirectShow first on Windows (more reliable for USB cams)
-                c = cv2.VideoCapture(url, cv2.CAP_DSHOW)
-                if c.isOpened():
-                    for _ in range(5): c.read()
-                    ret, f = c.read()
-                    if ret and f is not None:
-                        return c
-                    c.release()
-                
-                # Fallback to default backend (MSMF)
-                c = cv2.VideoCapture(url)
-                if c.isOpened():
-                    for _ in range(5): c.read()
-                    ret, f = c.read()
-                    if ret and f is not None:
-                        return c
-                    c.release()
-                
+                # Try requested index first, then fallback to index 0 (standard laptop webcam)
+                indices_to_try = [url]
+                if url != 0:
+                    indices_to_try.append(0)
+
+                for test_idx in indices_to_try:
+                    # Try DirectShow first on Windows (more reliable for USB cams)
+                    c = cv2.VideoCapture(test_idx, cv2.CAP_DSHOW)
+                    if c.isOpened():
+                        for _ in range(5): c.read()
+                        ret, f = c.read()
+                        if ret and f is not None:
+                            logger.info(f"CameraReader: opened webcam index {test_idx} (requested: {url})")
+                            return c
+                        c.release()
+
+                    # Fallback to default backend (MSMF)
+                    c = cv2.VideoCapture(test_idx)
+                    if c.isOpened():
+                        for _ in range(5): c.read()
+                        ret, f = c.read()
+                        if ret and f is not None:
+                            logger.info(f"CameraReader: opened webcam index {test_idx} on default backend (requested: {url})")
+                            return c
+                        c.release()
+
                 return None
             else:
                 c = cv2.VideoCapture(url)
@@ -515,6 +528,7 @@ class CameraReader:
             if cap is None:
                 if self.retry_count >= self.max_retries:
                     self.status = 'error'
+                    self.running = False
                     self.error_message = f'Camera index {self.rtsp_url} unavailable after {self.max_retries} attempts'
                     logger.error(f"CameraReader({self.rtsp_url}): giving up after {self.max_retries} retries")
                     return  # Stop the thread
@@ -587,12 +601,13 @@ def gen_frames(camera):
     while True:
         # Check if reader has permanently failed
         if reader.status == 'error':
-            error_frame = make_error_frame(f"Camera Unavailable: {camera.rtsp_url}")
+            error_frame = make_error_frame(f"Camera Offline: {camera.rtsp_url}")
             ret, buffer = cv2.imencode('.jpg', error_frame)
             if ret:
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-            return  # Stop the generator
+            time.sleep(1)
+            continue
 
         frame = reader.frame
         if frame is None:
@@ -790,7 +805,7 @@ def gen_frames(camera):
     # cap.release() not needed, reader runs indefinitely
 
 
-def _probe_local_webcams(max_index=10):
+def _probe_local_webcams(max_index=4):
     """Probe local webcam indices 0..max_index-1 and return list of available indices."""
     available = []
     for idx in range(max_index):

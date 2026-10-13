@@ -1,22 +1,46 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 export default function WebcamFeed({ deviceId, label, autoStart = false, style = {} }) {
   const [isActive, setIsActive] = useState(false);
   const [error, setError] = useState('');
   const [imgKey, setImgKey] = useState(0);
+  const imgRef = useRef(null);
   const timeoutRef = useRef(null);
+  const pollIntervalRef = useRef(null);
 
   const startStream = () => {
     setError('');
     setImgKey(prev => prev + 1); // Force img element to reload
     setIsActive(true);
 
-    // Set a timeout — if the img doesn't load within 15s, show error
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+
+    // Periodically verify if MJPEG frames are actively rendering (naturalWidth > 0)
+    // In Chromium, 'load' does not fire on multipart streams, but naturalWidth updates immediately.
+    pollIntervalRef.current = setInterval(() => {
+      if (imgRef.current && imgRef.current.naturalWidth > 0) {
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    }, 250);
+
+    // Only set timeout if no frames decode after 15 seconds
     timeoutRef.current = setTimeout(() => {
-      setError('Connection timed out');
-      setIsActive(false);
+      if (!imgRef.current || imgRef.current.naturalWidth === 0) {
+        setError('Connection timed out — check camera connection');
+        setIsActive(false);
+      }
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
     }, 15000);
   };
 
@@ -26,6 +50,10 @@ export default function WebcamFeed({ deviceId, label, autoStart = false, style =
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
   };
 
   const handleImgLoad = () => {
@@ -33,6 +61,10 @@ export default function WebcamFeed({ deviceId, label, autoStart = false, style =
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
+    }
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
     }
   };
 
@@ -89,6 +121,7 @@ export default function WebcamFeed({ deviceId, label, autoStart = false, style =
       {/* Image element pointing to backend stream */}
       {isActive && (
         <img
+          ref={imgRef}
           key={imgKey}
           src={`${API_BASE}/api/v1/video_feed/${deviceId || 1}/?token=${localStorage.getItem('access') || ''}`}
           alt="Video Feed"
@@ -105,6 +138,10 @@ export default function WebcamFeed({ deviceId, label, autoStart = false, style =
             if (timeoutRef.current) {
               clearTimeout(timeoutRef.current);
               timeoutRef.current = null;
+            }
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
             }
           }}
         />

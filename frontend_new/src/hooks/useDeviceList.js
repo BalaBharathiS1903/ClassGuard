@@ -19,8 +19,9 @@ const useDeviceList = () => {
       }));
 
       setAllDevices(formattedDevices);
-      // Only show cameras that are online or in maintenance (not offline)
-      setDevices(formattedDevices.filter(d => d.status !== 'offline'));
+      const onlineDevices = formattedDevices.filter(d => d.status !== 'offline');
+      // Show online cameras if available, otherwise show all cameras so user can interact/view them
+      setDevices(onlineDevices.length > 0 ? onlineDevices : formattedDevices);
     } catch (err) {
       console.error('Error fetching cameras:', err);
     }
