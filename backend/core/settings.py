@@ -229,7 +229,7 @@ else:
     if DEBUG and _redis_url:
         import warnings
         warnings.warn(
-            f"REDIS_URL was set to '{_redis_url}' but Redis server is not reachable. "
+            "REDIS_URL is configured but the Redis server is not reachable. "
             f"Using InMemoryChannelLayer dev fallback.",
             RuntimeWarning,
         )

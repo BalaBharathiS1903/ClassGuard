@@ -1,3 +1,5 @@
+import authFetch from './authFetch';
+
 /**
  * Face detection utility.
  * Uses the browser's FaceDetector API (Chrome/Edge) when available,
@@ -42,8 +44,6 @@ export async function detectFacesBrowser(image) {
  * @returns {Promise<{faceCount: number, faces: Array}>}
  */
 export async function detectFacesBackend(imageBlob) {
-  // Use dynamic import to avoid circular deps at module load time
-  const { default: authFetch } = await import('./authFetch');
   const formData = new FormData();
   formData.append('image', imageBlob, 'capture.jpg');
 

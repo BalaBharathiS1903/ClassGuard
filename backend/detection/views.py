@@ -20,6 +20,7 @@ from django.http import StreamingHttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.conf import settings
 from django.core.files.base import ContentFile
+from django.db import close_old_connections
 from ultralytics import YOLO
 import logging
 import threading
@@ -926,6 +927,7 @@ _sentinel = object()
 
 def _safe_next_frame(generator):
     try:
+        close_old_connections()
         return next(generator, _sentinel)
     except Exception as e:
         logger.warning(f"Error fetching next video frame: {e}")
