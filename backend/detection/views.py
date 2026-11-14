@@ -613,13 +613,14 @@ def gen_frames(camera):
         if frame is None:
             wait_count += 1
             if wait_count > max_wait:
-                # Timed out waiting for first frame
+                # Still waiting for camera signal, keep stream alive with informative placeholder
                 error_frame = make_error_frame("No signal - check camera connection")
                 ret, buffer = cv2.imencode('.jpg', error_frame)
                 if ret:
                     yield (b'--frame\r\n'
                            b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-                return
+                time.sleep(1)
+                continue
             
             # Show connecting frame every ~2 seconds while waiting
             if wait_count % 20 == 1:
@@ -920,6 +921,36 @@ def detect_face_api(request):
         return Response({'error': 'Face detection failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+_sentinel = object()
+
+
+def _safe_next_frame(generator):
+    try:
+        return next(generator, _sentinel)
+    except Exception as e:
+        logger.warning(f"Error fetching next video frame: {e}")
+        return _sentinel
+
+
+async def async_gen_frames(camera):
+    """Asynchronous generator yielding MJPEG multipart frames.
+    Compatible with Django 5/6 ASGI / Daphne servers by avoiding
+    the synchronous iterator list-buffering deadlock.
+    """
+    import asyncio
+    sync_gen = gen_frames(camera)
+    loop = asyncio.get_running_loop()
+    try:
+        while True:
+            chunk = await loop.run_in_executor(None, _safe_next_frame, sync_gen)
+            if chunk is _sentinel:
+                break
+            yield chunk
+    except asyncio.CancelledError:
+        logger.debug(f"Client disconnected from camera {camera.id} feed")
+        raise
+
+
 def video_feed(request, camera_id):
     """Authenticated video feed endpoint."""
     # --- Security: Require authentication for video feeds ---
@@ -945,7 +976,7 @@ def video_feed(request, camera_id):
         return JsonResponse({'error': 'Permission denied: Parents cannot view CCTV streams.'}, status=403)
 
     camera = get_object_or_404(Camera, id=camera_id)
-    response = StreamingHttpResponse(gen_frames(camera),
+    response = StreamingHttpResponse(async_gen_frames(camera),
                                 content_type='multipart/x-mixed-replace; boundary=frame')
     response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response['X-Accel-Buffering'] = 'no'
