@@ -4,13 +4,14 @@ services:
     runtime: python
     region: oregon
     buildCommand: |
+      : "${DATABASE_URL:?Set DATABASE_URL in the Render dashboard}" "${REDIS_URL:?Set REDIS_URL in the Render dashboard}" &&
       cd backend && pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate
     startCommand: cd backend && daphne -b 0.0.0.0 -p $PORT core.asgi:application
     envVars:
       - key: DATABASE_URL
-        value: "postgresql://neondb_owner:npg_45VWlIBkYFpf@ep-young-bonus-aymjxo3c.c-5.us-east-2.aws.neon.tech/neondb?sslmode=require"
+        sync: false
       - key: REDIS_URL
-        value: "rediss://default:gQAAAAAAAoGXAAIgcDJmNGQ1ZDViZWM4ODc0NTI2YTEwZDhjNmEyMWY2ZWMxMg@relaxing-roughy-164247.upstash.io:6379"
+        sync: false
       - key: SECRET_KEY
         generateValue: true
       - key: DEBUG

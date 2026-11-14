@@ -155,6 +155,28 @@ python manage.py loaddata students_backup.json
 
 Simply add students and register their faces through the Face Registration page.
 
+## Deploying the backend on Render
+
+In the Render dashboard, open the existing `ClassGuard` service → **Environment**. Set
+`DATABASE_URL` to the Neon PostgreSQL connection string and `REDIS_URL` to
+the Upstash Redis TLS connection string. Render prompts for these values when
+creating a Blueprint; for an existing service, update them in the dashboard.
+Keep the values out of Git. Set `DEBUG=False`, provide a strong, unique
+`SECRET_KEY`, and configure `ALLOWED_HOSTS` and `CORS_ORIGINS` for the deployed
+backend and frontend.
+
+The existing service uses `backend` as its root directory. In its **Settings**,
+use these commands:
+
+- **Build Command:** `pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate`
+- **Start Command:** `daphne -b 0.0.0.0 -p $PORT core.asgi:application`
+
+If either URL was committed, reset the corresponding password in Neon or
+Upstash. Update the affected Render environment variables with the new connection
+strings and rebuild and deploy the service. Confirm migrations complete and
+check that login and live alerts work. Changing the Blueprint alone does not
+revoke credentials already exposed in Git history.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
